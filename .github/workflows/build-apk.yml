@@ -41,7 +41,7 @@ jobs:
       - name: 构建 APK
         run: |
           chmod +x gradlew
-          TYPE=$(echo "${{ inputs.build_type }}" | sed 's/^\(.\)/\U\1/')
+          TYPE=$(echo "${{ inputs.build_type }}" | sed 's/^\(\.\)/\U\1/')
           ./gradlew "assemble$TYPE" --stacktrace
 
       # CI 环境没有 keystore.properties，release 产物为 app-release-unsigned.apk；
@@ -72,6 +72,27 @@ jobs:
           echo "apk_name=$DST" >> "$GITHUB_ENV"
           ls -lh "$DST"
 
+      - name: 发布到 GitHub Releases（测试版）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TYPE="${{ inputs.build_type }}"
+          APK="${{ env.apk_name }}"
+          REL_NAME="Ordify-latest-${TYPE}.apk"
+          cp "$APK" "$REL_NAME"
+          TAG="ci-latest"
+          TITLE="Ordify 测试版"
+          NOTES="自动构建的 ${TYPE} 版 APK（commit ${GITHUB_SHA::7}，版本 v${{ env.version }}）。"
+
+          # 如果 release 不存在则创建
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TITLE" --notes "$NOTES" --prerelease
+
+          # 上传/覆盖固定名称的 APK，保证下载链接稳定
+          gh release upload "$TAG" "$REL_NAME" --repo "$GITHUB_REPOSITORY" --clobber
+
+          echo "release_url=https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG" >> "$GITHUB_ENV"
+
       - name: 上传为构建产物
         uses: actions/upload-artifact@v4
         with:
@@ -84,8 +105,15 @@ jobs:
           {
             echo "## 构建完成"
             echo ""
+            echo "### 📱 移动端直接下载"
+            echo ""
+            echo "**[⬇️ 点击下载 ${{ inputs.build_type }} APK](${{ env.release_url }})**"
+            echo ""
+            echo "---"
+            echo ""
             echo "- 类型：\`${{ inputs.build_type }}\`"
             echo "- 版本：\`v${{ env.version }}\`"
             echo "- 提交：\`${GITHUB_SHA::7}\`"
-            echo "- 产物：\`${{ env.apk_name }}\`（页面底部 Artifacts 下载，保留 30 天）"
+            echo "- 固定文件名：\`Ordify-latest-${{ inputs.build_type }}.apk\`"
+            echo "- Actions 产物：\`${{ env.apk_name }}\`（页面底部 Artifacts，保留 30 天）"
           } >> "$GITHUB_STEP_SUMMARY"
