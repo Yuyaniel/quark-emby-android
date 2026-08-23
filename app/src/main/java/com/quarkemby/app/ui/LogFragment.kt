@@ -14,7 +14,7 @@ import com.quarkemby.app.R
 import com.quarkemby.app.data.Prefs
 import com.quarkemby.app.data.models.JobLogEntry
 
-/** Shows the local job history written by each Emby batch-rename run. */
+/** Shows the local job history written by each batch-rename run. */
 class LogFragment : Fragment() {
 
     private lateinit var root: LinearLayout
@@ -40,7 +40,7 @@ class LogFragment : Fragment() {
         val entries = Prefs.getLogEntries()
         if (entries.isEmpty()) {
             root.addView(TextView(requireContext()).apply {
-                text = "暂无任务记录。完成一次 Emby 批量整理后会在这里显示结果。"
+                text = "暂无任务记录。完成一次批量整理后会在这里显示结果。"
                 textSize = 13f
                 setTextColor(resources.getColor(R.color.muted, null))
                 setPadding(0, 14, 0, 0)

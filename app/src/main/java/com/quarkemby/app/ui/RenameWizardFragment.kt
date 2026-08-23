@@ -123,7 +123,7 @@ class RenameWizardFragment : DialogFragment() {
 
     private fun renderTitle() {
         root.addView(TextView(requireContext()).apply {
-            text = "Emby 批量重命名"
+            text = "批量重命名"
             textSize = 20f; setTypeface(Typeface.DEFAULT, Typeface.BOLD)
             setTextColor(resources.getColor(R.color.ink, null))
         })
@@ -138,7 +138,9 @@ class RenameWizardFragment : DialogFragment() {
     private fun renderStep1() {
         root.addView(stepHeader("第 1 步 · 输入剧集名称（可加年份区分同名）"))
         val nameInput = EditText(requireContext()).apply {
-            hint = "剧集名称，如：濑户的花嫁"; setSingleLine(true)
+            hint = "剧集名称"; setSingleLine(true)
+            // auto-fill with the folder name so the user can rename a whole folder quickly
+            setText(folder.name)
         }
         val yearInput = EditText(requireContext()).apply {
             hint = "年份（可选，区分同名，如 2007）"; setSingleLine(true)

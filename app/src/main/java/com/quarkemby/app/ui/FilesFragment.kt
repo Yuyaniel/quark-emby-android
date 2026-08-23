@@ -44,34 +44,23 @@ class FilesFragment : Fragment() {
         b.backBtn.setOnClickListener { goUp() }
         b.refreshBtn.setOnClickListener { load() }
         // pre-existing path (e.g. from Settings "set as home") wins over saved home
-        if (nameStack.isEmpty() && Prefs.hasHomeFolder && !restoringFromDeepLink) {
+        if (navStack.isEmpty() && Prefs.hasHomeFolder) {
             applyHomeFolder()
+        } else {
+            updatePath()
+            load()
         }
-        updatePath()
-        load()
     }
 
-    private var restoringFromDeepLink = false
-
-    /** Jump into the saved home folder, remembering the way back. */
+    /** Jump into the saved home folder, remembering the way back to root. */
     private fun applyHomeFolder() {
-        var fid = Prefs.homeFolderFid
-        var nm = Prefs.homeFolderName
-        // re-resolve from live API to avoid stale fid
-        lifecycleScope.launch {
-            try {
-                val all = QuarkApi.list("0")
-                val hit = all.firstOrNull { it.fid == fid || it.name == nm }
-                if (hit != null) { fid = hit.fid; nm = hit.name }
-                navStack.clear(); nameStack.clear()
-                currentFid = fid
-                nameStack.add(nm)
-                navStack.add("0")
-                updatePath(); load()
-            } catch (e: Exception) {
-                // fall back silently to root later
-            }
-        }
+        navStack.clear(); nameStack.clear()
+        // treat the saved home folder as a nested level so back returns to root
+        navStack.add("0")
+        nameStack.add(Prefs.homeFolderName.ifBlank { "首页目录" })
+        currentFid = Prefs.homeFolderFid
+        updatePath()
+        load()
     }
 
     private fun updatePath() {
@@ -126,7 +115,7 @@ class FilesFragment : Fragment() {
             setBackgroundResource(R.color.surface)
             addView(menuTitle(item))
             if (item.isFolder) {
-                addView(menuRow("🎬", "Emby 批量重命名", "剧集整理 · 核心功能") {
+                addView(menuRow("🎬", "批量重命名", "剧集整理 · 核心功能") {
                     dlg.dismiss()
                     RenameWizardFragment.newInstance(item).show(childFragmentManager, "rename_wizard")
                 })
