@@ -2,12 +2,14 @@ package com.quarkemby.app.util
 
 /**
  * Cleans a folder name before it is auto-filled as the show name.
+ * Final rule: keep ONLY CJK Unified Ideographs (Chinese characters).
  *   "九门(2026)"                       -> "九门"
  *   "候车室的故事 (2002) {tmdb-111436}" -> "候车室的故事"
  *   "濑户的花嫁【2024】(1080p)"         -> "濑户的花嫁"
- *   "九门(第2季)"                      -> "九门"   (any digits in brackets)
+ *   "九门(第2季)"                      -> "九门"
  *   "某剧(01)" / "某剧(S2)"            -> "某剧"
- *   "毛骗２０１０"                      -> "毛骗"   (full-width digits)
+ *   "毛骗２０１０"                      -> "毛骗"
+ *   "2024" / "Season 1"               -> ""   (no fallback to raw)
  */
 object ShowNames {
 
@@ -27,7 +29,7 @@ object ShowNames {
     /** bracket pairs left EMPTY by the removals above — never keep stray "()" */
     private val emptyBracket = Regex("""\s*[(（\[【]\s*[)）\]】]""")
     private val fullWidthDigit = Regex("""[０-９]""")
-    /** final fallback: drop anything that is not a CJK Unified Ideograph */
+    /** final hard rule: drop anything that is not a CJK Unified Ideograph */
     private val hanOnly = Regex("""[^\p{Han}]""")
 
     /** full-width digits ０-９ -> 0-9 so \d patterns always match */
@@ -45,10 +47,11 @@ object ShowNames {
         // collapse whitespace runs and trim separator leftovers
         out = out.replace(Regex("""\s{2,}"""), " ").trim()
         out = out.trimEnd('-', '_', '·', '，', ',').trim()
-        // final fallback: keep only CJK Unified Ideographs (Chinese characters).
-        // This avoids leaking any year, season tag, punctuation, or stray
-        // non-Chinese text that previous rules did not catch.
+        // Final hard rule: keep ONLY CJK Unified Ideographs (Chinese characters).
+        // No fallback to the raw folder name — if the name contains only
+        // numbers/symbols/English, the input field stays empty so the user
+        // must type a proper Chinese show name.
         out = hanOnly.replace(out, "")
-        return out.ifBlank { raw.trim() }
+        return out
     }
 }
