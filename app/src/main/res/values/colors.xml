@@ -11,6 +11,7 @@
     <color name="bg">#F3F4F8</color>
     <color name="surface">#FBFCFE</color>
     <color name="surface_container">#EFF1F6</color>
+    <color name="surface_container_low">#F5F7FB</color>
     <color name="surface_container_high">#E7EAF1</color>
     <color name="ink">#20242D</color>
     <color name="muted">#5F6675</color>

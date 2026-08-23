@@ -1,5 +1,8 @@
 package com.quarkemby.app.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.graphics.Typeface
 import android.os.Bundle
 import android.view.Gravity
@@ -9,6 +12,7 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.fragment.app.Fragment
 import com.quarkemby.app.R
 import com.quarkemby.app.data.Prefs
@@ -20,11 +24,19 @@ class LogFragment : Fragment() {
 
     private lateinit var root: LinearLayout
 
+    /** Copies text to the clipboard and toasts. */
+    private fun copyLog(label: String, text: String) {
+        val cm = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText(label, text))
+        Toast.makeText(requireContext(), "已复制$label", Toast.LENGTH_SHORT).show()
+    }
+
     override fun onCreateView(i: LayoutInflater, c: ViewGroup?, s: Bundle?): View {
         val scroll = ScrollView(requireContext())
         root = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(20, 20, 20, 30)
+            // extra bottom padding so content clears the floating nav pill
+            setPadding(20, 20, 20, Ui.dp(requireContext(), 92))
         }
         scroll.addView(root)
         return scroll
@@ -32,10 +44,32 @@ class LogFragment : Fragment() {
 
     override fun onViewCreated(view: View, s: Bundle?) {
         root.removeAllViews()
-        root.addView(TextView(requireContext()).apply {
-            text = "任务日志"; textSize = 20f
-            setTypeface(Typeface.DEFAULT, Typeface.BOLD)
-            setTextColor(resources.getColor(R.color.ink, null))
+
+        // title row: "任务日志" on the left, clear-all action on the right
+        root.addView(LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(TextView(requireContext()).apply {
+                text = "任务日志"; textSize = 20f
+                setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+                setTextColor(resources.getColor(R.color.ink, null))
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            addView(TextView(requireContext()).apply {
+                text = "清理"
+                textSize = 14f
+                isClickable = true
+                setPadding(Ui.dp(requireContext(), 14), Ui.dp(requireContext(), 8),
+                    Ui.dp(requireContext(), 14), Ui.dp(requireContext(), 8))
+                setTextColor(resources.getColor(R.color.danger, null))
+                foreground = androidx.core.content.ContextCompat.getDrawable(
+                    requireContext(), R.drawable.ripple_fg
+                )
+                setOnClickListener {
+                    Prefs.clearLogEntries()
+                    onViewCreated(view, s)
+                }
+            })
         })
 
         // last captured crash (if any) sits on top for easy feedback
@@ -58,6 +92,14 @@ class LogFragment : Fragment() {
                 textSize = 11f
                 setTextColor(resources.getColor(R.color.muted, null))
                 setPadding(0, 6, 0, 0)
+                // long-press copies the full crash trace
+                setOnLongClickListener {
+                    copyLog("崩溃日志", crash)
+                    true
+                }
+            })
+            card.addView(Ui.secondaryTextBtn(requireContext(), "复制崩溃日志") {
+                copyLog("崩溃日志", crash)
             })
             card.addView(Ui.secondaryTextBtn(requireContext(), "清除崩溃记录") {
                 CrashLog.clear(requireContext())
@@ -101,6 +143,11 @@ class LogFragment : Fragment() {
             text = e.detail
             textSize = 12f; setTextColor(resources.getColor(R.color.muted, null))
             setPadding(0, 6, 0, 0)
+            // long-press copies the whole job detail for feedback reports
+            setOnLongClickListener {
+                copyLog("任务详情", "${e.time} ${e.title} · ${e.summary}\n${e.detail}")
+                true
+            }
         })
         root.addView(spacer())
         return wrap

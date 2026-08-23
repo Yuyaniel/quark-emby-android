@@ -2,12 +2,16 @@ package com.quarkemby.app.ui
 
 import android.app.Dialog
 import android.content.Context
+import android.graphics.Outline
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.InputType
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.view.Window
+import android.view.WindowManager
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.ImageView
@@ -54,6 +58,7 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
     private var tmdbSeasonSel: Int = 1
 
     private lateinit var root: LinearLayout
+    private val scroll: ScrollView = ScrollView(ctx)
 
     companion object {
         private const val TPL_SEASON_TITLE = "{show_name}.S{ss}E{ee}.{ep_title}"
@@ -67,21 +72,37 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
         window?.setBackgroundDrawableResource(android.R.color.transparent)
         setCanceledOnTouchOutside(false)
 
-        val scroll = ScrollView(ctx)
         root = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(24, 22, 24, 26)
-            setBackgroundResource(R.drawable.bg_scrim_dialog)
+            setPadding(Ui.dp(ctx, 22), Ui.dp(ctx, 24), Ui.dp(ctx, 22), Ui.dp(ctx, 24))
+            setBackgroundResource(R.drawable.bg_center_dialog)
         }
         scroll.addView(root)
         setContentView(scroll)
-        Ui.centerWindow(this, 0.92f)
+        dialogWindow()
         Ui.applyScrim(this, 0.5f)
 
         safeRender("step1") { renderTitle(); renderStep1() }
 
         // prefetch folder contents; any failure is non-fatal (lazy retry later)
         scope.launch { runCatching { items = QuarkApi.list(folder.fid) } }
+    }
+
+    /**
+     * Centered dialog window: wrap-content height (no dialog scrolling).
+     * [widthRatio] allows the denser step-2 layout to render slightly
+     * narrower than the default 0.92.
+     */
+    private fun dialogWindow(widthRatio: Float = 0.92f) {
+        val w = window ?: return
+        scroll.isFillViewport = false
+        root.layoutParams.height = ViewGroup.LayoutParams.WRAP_CONTENT
+        val lp = w.attributes
+        lp.gravity = Gravity.CENTER
+        lp.width = (w.context.resources.displayMetrics.widthPixels * widthRatio).toInt()
+        lp.horizontalMargin = 0f
+        lp.height = WindowManager.LayoutParams.WRAP_CONTENT
+        w.attributes = lp
     }
 
     override fun dismiss() {
@@ -112,6 +133,10 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
     }
 
     private fun renderTitle() {
+        // step-2 swaps the content view; every other step restores the
+        // original scroll container before rendering
+        setContentView(scroll)
+        dialogWindow()
         root.addView(TextView(context).apply {
             text = "批量重命名"
             textSize = 20f; setTypeface(Typeface.DEFAULT, Typeface.BOLD)
@@ -127,7 +152,7 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
     // ---------- Step 1 ----------
     private fun renderStep1() {
         root.addView(stepHeader("第 1 步 · 剧集名称"))
-        // cleaned name pre-computed defensively ("九门(2026)" -> "九门")
+        // cleaned name pre-computed defensively ("毛骗(2010)" -> "毛骗")
         val cleaned = runCatching { ShowNames.clean(folder.name) }.getOrDefault(folder.name)
         val nameInput = EditText(context).apply {
             hint = "剧集名称"; setSingleLine(true)
@@ -135,52 +160,44 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
         }
         root.addView(nameInput); root.addView(spacer())
         root.addView(TextView(context).apply {
-            text = "已自动去除年份等杂项（九门(2026) → 九门），可手动修改"
+            text = "已自动去除年份等杂项（毛骗(2010) → 毛骗），可手动修改"
             textSize = 12f
             setTextColor(ContextCompat.getColor(context, R.color.muted))
             setPadding(4, 0, 4, 10)
         })
 
         // TMDB path: season NOT required — season chips come from TMDB in step 2
-        root.addView(button("TMDB 搜索（无需季号 · 带封面与剧集标题）") {
+        root.addView(button("TMDB 搜索（增加剧集标题）") {
             val name = nameInput.text.toString().trim()
             if (name.isEmpty()) { toast("请输入剧集名称"); return@button }
             searchTmdb(name)
         })
+        root.addView(spacer())
 
-        root.addView(dividerWithLabel("或 使用本地解析"))
         val seasonInput = EditText(context).apply {
             hint = "第几季（可选）"
             setSingleLine(true)
             inputType = InputType.TYPE_CLASS_NUMBER
         }
         root.addView(seasonInput); root.addView(spacer())
-        root.addView(buttonSub("整理重命名(本地解析)") {
+        // same primary filled style as the TMDB button (identical radius/height)
+        root.addView(button("整理重命名(本地解析)") {
             val name = nameInput.text.toString().trim()
-            if (name.isEmpty()) { toast("请输入剧集名称"); return@buttonSub }
+            if (name.isEmpty()) { toast("请输入剧集名称"); return@button }
             val raw = seasonInput.text.toString().trim()
             val season = raw.toIntOrNull()?.takeIf { it in 1..99 }
             if (raw.isNotEmpty() && season == null) {
-                toast("季号请填 1-99 的数字，或留空"); return@buttonSub
+                toast("季号请填 1-99 的数字，或留空"); return@button
             }
             buildAndPreview(name, season, null)
         })
         root.addView(TextView(context).apply {
-            text = "本地解析：季号留空 → 九门.01.mp4，填 1 → 九门.S01E01.mp4"
+            text = "本地解析：季号留空 → 毛骗.01.mp4，填 1 → 毛骗.S01E01.mp4"
             textSize = 12f
             setTextColor(ContextCompat.getColor(context, R.color.muted))
             setPadding(4, 2, 4, 4)
         })
-        root.addView(buttonSub("取消") { dismiss() })
-    }
-
-    /** Small centered "or" divider used to separate the two rename paths. */
-    private fun dividerWithLabel(label: String) = TextView(context).apply {
-        text = label
-        textSize = 12f
-        gravity = Gravity.CENTER
-        setTextColor(ContextCompat.getColor(context, R.color.muted))
-        setPadding(0, Ui.dp(context, 10), 0, Ui.dp(context, 10))
+        root.addView(buttonOutline("取消") { dismiss() })
     }
 
     // ---------- Step 2: TMDB results + season chips ----------
@@ -232,32 +249,62 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
         }
     }
 
+    /**
+     * Step 2 — Material3 dark centered dialog (pure View system): wrap-height
+     * NON-scrolling layout. Header (3 left-aligned lines) / plain column of
+     * top-4 rows (16dp gaps, no scrolling) / season chips / actions.
+     */
     private fun renderStep2Body(queryName: String, loadingSeasons: Boolean = false) {
-        root.addView(stepHeader("第 2 步 · 选择剧集与季"))
-        if (tmdbResults.isEmpty()) {
-            root.addView(TextView(context).apply {
+        // fresh non-scrolling content view; window wraps its height exactly
+        val page = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(Ui.dp(context, 22), Ui.dp(context, 24), Ui.dp(context, 22), Ui.dp(context, 24))
+            setBackgroundResource(R.drawable.bg_center_dialog)
+        }
+        dialogWindow(0.85f)
+        setContentView(page)
+
+        // ---- header: three left-aligned text blocks ----
+        page.addView(TextView(context).apply {
+            text = "批量重命名"
+            textSize = 20f; setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+            setTextColor(ContextCompat.getColor(context, R.color.ink))
+        })
+        page.addView(TextView(context).apply {
+            text = folder.name; textSize = 13f
+            setTextColor(ContextCompat.getColor(context, R.color.muted))
+            setPadding(0, Ui.dp(context, 2), 0, Ui.dp(context, 12))
+        })
+        page.addView(stepHeader("第 2 步 · 选择剧集与季"))
+
+        // ---- top-4 result rows in a plain column, 16dp between rows ----
+        val shows = tmdbResults.take(4)
+        if (shows.isEmpty()) {
+            page.addView(TextView(context).apply {
                 text = "没有找到匹配结果，可直接使用本地解析整理。"
-                textSize = 13f; setTextColor(ContextCompat.getColor(context, R.color.muted)); setPadding(0, 8, 0, 8)
+                textSize = 13f; setTextColor(ContextCompat.getColor(context, R.color.muted))
+                setPadding(0, Ui.dp(context, 10), 0, Ui.dp(context, 10))
             })
         } else {
-            // fixed-height scroll area: 3 rows visible, rest scroll up/down
-            val listScroll = ScrollView(context).apply {
-                isVerticalScrollBarEnabled = false
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    Ui.dp(context, 113 * minOf(3, tmdbResults.size))
-                )
+            shows.forEachIndexed { i, show ->
+                val row = showRow(show, queryName)
+                (row.layoutParams as LinearLayout.LayoutParams).topMargin =
+                    if (i == 0) 0 else Ui.dp(context, 16)
+                page.addView(row)
             }
-            val listCol = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-            tmdbResults.forEach { show -> listCol.addView(showRow(show, queryName)) }
-            listScroll.addView(listCol)
-            root.addView(listScroll)
+            page.addView(TextView(context).apply {
+                text = "仅显示前 4 个最匹配的结果"
+                textSize = 12f
+                gravity = Gravity.CENTER
+                setTextColor(ContextCompat.getColor(context, R.color.muted))
+                setPadding(0, Ui.dp(context, 8), 0, 0)
+            })
         }
 
         // season chips of the selected show (TMDB is the authority for season)
         val sel = selectedShow
         if (sel != null) {
-            root.addView(TextView(context).apply {
+            page.addView(TextView(context).apply {
                 text = "选择季（以 TMDB 为准" +
                         (if (loadingSeasons) " · 正在获取…" else "") + "）"
                 textSize = 13f; setTypeface(Typeface.DEFAULT, Typeface.BOLD)
@@ -288,7 +335,7 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
                         setColor(
                             ContextCompat.getColor(
                                 context,
-                                if (active) R.color.brand_primary else R.color.surface_container_high
+                                if (active) R.color.brand_primary else R.color.surface_container
                             )
                         )
                     }
@@ -300,68 +347,188 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
                 chipRow.addView(spacerView(8, LinearLayout.HORIZONTAL))
             }
             chipScroll.addView(chipRow)
-            root.addView(chipScroll)
+            page.addView(chipScroll)
         }
 
-        root.addView(spacer())
+        // ---- primary action, then the two TextButtons bottom-right ----
         if (sel != null) {
-            root.addView(button("使用所选剧集 · 继续（第 $tmdbSeasonSel 季 · 含剧集标题）") {
+            page.addView(button("使用所选剧集 · 继续（第 $tmdbSeasonSel 季 · 含剧集标题）") {
                 buildAndPreview(sel.name, tmdbSeasonSel, sel)
             })
         }
-        root.addView(buttonSub("跳过 TMDB · 整理重命名(本地解析)") {
-            buildAndPreview(queryName, null, null)
+        page.addView(LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+            addView(textBtn("跳过TMDB本地解析") { buildAndPreview(queryName, null, null) })
+            addView(textBtn("返回上一步") { safeRender("step1") { renderTitle(); renderStep1() } })
         })
-        root.addView(buttonSub("返回上一步") { safeRender("step1") { renderTitle(); renderStep1() } })
     }
 
-    /** One TMDB search-result row: poster + name + radio mark. */
+    /** Borderless text action (Material3 TextButton style). */
+    private fun textBtn(label: String, onClick: () -> Unit) = TextView(context).apply {
+        text = label
+        textSize = 14f
+        isClickable = true
+        setPadding(Ui.dp(context, 12), Ui.dp(context, 10), Ui.dp(context, 12), Ui.dp(context, 10))
+        setTextColor(ContextCompat.getColor(context, R.color.brand_primary))
+        setOnClickListener { onClick() }
+    }
+
+    /**
+     * One TMDB result as a plain row (no card / border / radio), strictly
+     * center-aligned vertically: 64×90 poster (2:3, 8dp rounded) + 2-line
+     * title + "剧集 · 年份" secondary text. 8dp vertical padding. Tapping
+     * the row opens a confirmation dialog instead of selecting directly.
+     */
     private fun showRow(show: TmdbApi.Show, queryName: String): LinearLayout =
         LinearLayout(context).apply {
+            val selected = selectedShow?.id == show.id
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(8, 10, 8, 10)
+            setPadding(Ui.dp(context, 2), Ui.dp(context, 8), Ui.dp(context, 2), Ui.dp(context, 8))
             isClickable = true
             foreground = ContextCompat.getDrawable(context, R.drawable.ripple_fg)
-            background = GradientDrawable().apply {
-                cornerRadius = Ui.dp(context, 12).toFloat()
-                setColor(
-                    ContextCompat.getColor(
-                        context,
-                        if (selectedShow?.id == show.id) R.color.primary_container
-                        else R.color.surface_container_high
-                    )
-                )
-            }
-            setOnClickListener { selectShow(show, queryName) }
+            setOnClickListener { showConfirmDialog(show, queryName) }
+
             val poster = ImageView(context).apply {
-                layoutParams = LinearLayout.LayoutParams(Ui.dp(context, 54), Ui.dp(context, 81))
+                layoutParams = LinearLayout.LayoutParams(Ui.dp(context, 64), Ui.dp(context, 90))
                     .apply { marginEnd = Ui.dp(context, 12) }
                 scaleType = ImageView.ScaleType.CENTER_CROP
+                // 8dp rounded corners via outline clipping
+                clipToOutline = true
+                outlineProvider = object : ViewOutlineProvider() {
+                    override fun getOutline(view: View, outline: Outline) {
+                        outline.setRoundRect(
+                            0, 0, view.width, view.height, Ui.dp(context, 8).toFloat()
+                        )
+                    }
+                }
             }
             Img.load(show.posterUrl, poster)
             addView(poster)
-            val col = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+
+            val col = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
             col.addView(TextView(context).apply {
-                text = "${show.name}（${show.firstAirYear.ifEmpty { "未知年份" }}）"
+                text = show.name
                 textSize = 15f; setTypeface(Typeface.DEFAULT, Typeface.BOLD)
-                setTextColor(ContextCompat.getColor(context, R.color.ink))
+                maxLines = 2
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setTextColor(
+                    ContextCompat.getColor(
+                        context,
+                        if (selected) R.color.brand_primary else R.color.ink
+                    )
+                )
             })
             col.addView(TextView(context).apply {
-                text = "TMDB ID: ${show.id}"
-                textSize = 11f; setTextColor(ContextCompat.getColor(context, R.color.muted))
+                text = "剧集 · ${show.firstAirYear.ifEmpty { "未知年份" }}"
+                textSize = 12f; setPadding(0, Ui.dp(context, 3), 0, 0)
+                setTextColor(ContextCompat.getColor(context, R.color.muted))
             })
             addView(col, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-            addView(TextView(context).apply {
-                text = if (selectedShow?.id == show.id) "●" else "○"
-                textSize = 14f
-                setPadding(Ui.dp(context, 8), 0, 4, 0)
-                setTextColor(ContextCompat.getColor(context, R.color.brand_primary))
-            })
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(0, Ui.dp(context, 6), 0, Ui.dp(context, 6)) }
+            )
         }
+
+    /**
+     * Second-step confirmation: centered dialog showing the show's info
+     * before committing (same structure as the scrape-confirm dialog):
+     * left-aligned headline / poster+info row / explanation paragraph /
+     * right-aligned TextButtons. 开始整理 continues the original selection
+     * flow (load seasons -> step 2 with chips); 返回 just closes it.
+     */
+    private fun showConfirmDialog(show: TmdbApi.Show, queryName: String) {
+        val dlg = Dialog(context)
+        dlg.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        dlg.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        val col = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(Ui.dp(context, 22), Ui.dp(context, 24), Ui.dp(context, 22), Ui.dp(context, 18))
+            setBackgroundResource(R.drawable.bg_center_dialog)
+
+            // ---- headline, left-aligned ----
+            addView(TextView(context).apply {
+                text = "确认使用TMDB信息"
+                textSize = 22f; setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+                setTextColor(ContextCompat.getColor(context, R.color.ink))
+                setPadding(0, 0, 0, Ui.dp(context, 16))
+            })
+
+            // ---- info row: poster + column, vertically centered ----
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+
+                val poster = ImageView(context).apply {
+                    layoutParams = LinearLayout.LayoutParams(Ui.dp(context, 80), Ui.dp(context, 112))
+                        .apply { marginEnd = Ui.dp(context, 16) }
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                    clipToOutline = true
+                    outlineProvider = object : ViewOutlineProvider() {
+                        override fun getOutline(view: View, outline: Outline) {
+                            outline.setRoundRect(
+                                0, 0, view.width, view.height, Ui.dp(context, 8).toFloat()
+                            )
+                        }
+                    }
+                }
+                Img.load(show.posterUrl, poster)
+                addView(poster)
+
+                val info = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+                info.addView(TextView(context).apply {
+                    text = show.name
+                    textSize = 17f; setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+                    maxLines = 2
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    setTextColor(ContextCompat.getColor(context, R.color.ink))
+                })
+                info.addView(TextView(context).apply {
+                    text = "类型：剧集"
+                    textSize = 13f; setPadding(0, Ui.dp(context, 6), 0, 0)
+                    setTextColor(ContextCompat.getColor(context, R.color.muted))
+                })
+                info.addView(TextView(context).apply {
+                    text = "年份：${show.firstAirYear.ifEmpty { "未知" }}"
+                    textSize = 13f; setPadding(0, Ui.dp(context, 2), 0, 0)
+                    setTextColor(ContextCompat.getColor(context, R.color.muted))
+                })
+                info.addView(TextView(context).apply {
+                    text = "TMDB-ID：${show.id}"
+                    textSize = 13f; setPadding(0, Ui.dp(context, 2), 0, 0)
+                    setTextColor(ContextCompat.getColor(context, R.color.muted))
+                })
+                addView(info, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            })
+
+            // ---- explanation paragraph, secondary color ----
+            addView(TextView(context).apply {
+                text = "确认后将以 TMDB 的季信息进行整理，季数以 TMDB 为准，无需手动填写。"
+                textSize = 14f
+                setPadding(0, Ui.dp(context, 16), 0, Ui.dp(context, 8))
+                setTextColor(ContextCompat.getColor(context, R.color.muted))
+            })
+
+            // ---- actions, right-aligned TextButtons ----
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.END
+                addView(textBtn("返回") { dlg.dismiss() })
+                addView(textBtn("开始整理") {
+                    dlg.dismiss()
+                    selectShow(show, queryName)
+                })
+            })
+        }
+        dlg.setContentView(col)
+        Ui.centerWindow(dlg, 0.8f)
+        Ui.applyScrim(dlg)
+        dlg.show()
+    }
 
     // ---------- Step 3: plan + preview ----------
     private fun buildAndPreview(showName: String, userSeason: Int?, show: TmdbApi.Show?) {
@@ -636,6 +803,10 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
     /** Primary CTA — TextView-based for maximum device compatibility. */
     private fun button(label: String, onClick: () -> Unit) =
         Ui.primaryTextBtn(context, label, onClick)
+
+    /** Outlined action — transparent fill + hairline border, same shape as primary. */
+    private fun buttonOutline(label: String, onClick: () -> Unit) =
+        Ui.outlineTextBtn(context, label, onClick)
 
     /** Secondary action — TextView-based for maximum device compatibility. */
     private fun buttonSub(label: String, onClick: () -> Unit) =

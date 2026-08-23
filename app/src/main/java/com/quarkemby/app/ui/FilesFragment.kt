@@ -48,6 +48,12 @@ class FilesFragment : Fragment() {
         adapter = FileAdapter(onClick = ::enterItem, onLongClick = ::openMenu)
         b.fileList.layoutManager = LinearLayoutManager(requireContext())
         b.fileList.adapter = adapter
+        // let items scroll under the floating bottom nav pill
+        b.fileList.clipToPadding = false
+        b.fileList.setPadding(
+            b.fileList.paddingLeft, b.fileList.paddingTop,
+            b.fileList.paddingRight, Ui.dp(requireContext(), 92)
+        )
         // soft vertical gaps between list cards
         b.fileList.addItemDecoration(object : RecyclerView.ItemDecoration() {
             override fun getItemOffsets(
@@ -186,23 +192,29 @@ class FilesFragment : Fragment() {
 
     // ---------- loading + sorting ----------
     private fun load() = lifecycleScope.launch {
-        b.loading.visibility = View.VISIBLE
-        b.errorView.visibility = View.GONE
-        b.emptyView.visibility = View.GONE
+        // Rapid tab taps may destroy the view while this coroutine runs;
+        // capture the binding (or bail out) so we never hit _b!! NPE.
+        val vb = _b ?: return@launch
+        vb.loading.visibility = View.VISIBLE
+        vb.errorView.visibility = View.GONE
+        vb.emptyView.visibility = View.GONE
         try {
             val items = QuarkApi.list(currentFid)
             loadedItems = sort(items)
             adapter.submit(loadedItems)
-            b.emptyView.visibility = if (loadedItems.isEmpty()) View.VISIBLE else View.GONE
+            if (_b != null) {
+                b.emptyView.visibility = if (loadedItems.isEmpty()) View.VISIBLE else View.GONE
+            }
         } catch (e: Exception) {
             if (e.message?.contains("失效") == true) {
                 MainActivity.INSTANCE.showLogin()
-            } else {
+            } else if (_b != null) {
                 b.errorView.text = e.message ?: "加载失败"
                 b.errorView.visibility = View.VISIBLE
             }
         } finally {
-            b.loading.visibility = View.GONE
+            // view may be gone by now (fragment replaced mid-flight)
+            _b?.loading?.visibility = View.GONE
         }
     }
 
@@ -271,7 +283,11 @@ class FilesFragment : Fragment() {
         dlg.window?.setBackgroundDrawableResource(android.R.color.transparent)
         val col = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(24, 22, 24, 16)
+            // unified dialog padding (all dp) so title and rows share one grid
+            setPadding(
+                Ui.dp(requireContext(), 20), Ui.dp(requireContext(), 18),
+                Ui.dp(requireContext(), 20), Ui.dp(requireContext(), 16)
+            )
             setBackgroundResource(R.drawable.bg_scrim_dialog)
             addView(menuTitle(item))
             // ---- common actions ----
@@ -299,34 +315,58 @@ class FilesFragment : Fragment() {
         dlg.show()
     }
 
+    /**
+     * Dialog header (folder name). Left/right padding matches the inner
+     * padding of the menu cards, so title text aligns with row text.
+     */
     private fun menuTitle(item: FileItem): TextView = Ui.title(requireContext(), item.name, 17f).apply {
         maxLines = 1
         ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
-        setPadding(8, 0, 8, Ui.dp(requireContext(), 10))
+        setPadding(
+            Ui.dp(requireContext(), 14), 0,
+            Ui.dp(requireContext(), 14), Ui.dp(requireContext(), 4)
+        )
     }
 
     /** Thin hairline separating the destructive group from common actions. */
     private fun menuDivider(): View = View(requireContext()).apply {
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, Ui.dp(requireContext(), 1)
-        ).apply { setMargins(8, Ui.dp(requireContext(), 8), 8, Ui.dp(requireContext(), 8)) }
+        ).apply { setMargins(0, Ui.dp(requireContext(), 6), 0, Ui.dp(requireContext(), 6)) }
         setBackgroundColor(ContextCompat.getColor(requireContext(), R.color.outline_variant))
     }
 
-    /** Text-only menu row (no icon chip); danger rows render in warning red. */
+    /**
+     * Text-only menu row rendered as a subtle card: faint background +
+     * 1dp hairline border + rounded corners. Every row gets the same card
+     * treatment (danger rows tinted red) so click boundaries are obvious,
+     * and uniform dp(4) vertical margins visually isolate the options.
+     */
     private fun menuRow(
         title: String, sub: String,
         danger: Boolean = false, action: () -> Unit
     ): LinearLayout = LinearLayout(requireContext()).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        setPadding(14, Ui.dp(requireContext(), 11), 14, Ui.dp(requireContext(), 11))
+        setPadding(
+            Ui.dp(requireContext(), 14), Ui.dp(requireContext(), 11),
+            Ui.dp(requireContext(), 14), Ui.dp(requireContext(), 11)
+        )
         foreground = ContextCompat.getDrawable(requireContext(), R.drawable.ripple_fg)
         isClickable = true
-        background = if (danger) GradientDrawable().apply {
+        background = GradientDrawable().apply {
             cornerRadius = Ui.dp(requireContext(), 12).toFloat()
-            setColor(ContextCompat.getColor(requireContext(), R.color.danger_container))
-        } else null
+            setColor(
+                ContextCompat.getColor(
+                    requireContext(),
+                    if (danger) R.color.danger_container else R.color.surface_container_high
+                )
+            )
+            setStroke(
+                Ui.dp(requireContext(), 1),
+                ContextCompat.getColor(requireContext(), R.color.outline_variant)
+            )
+        }
         setOnClickListener { action() }
         val col = LinearLayout(requireContext()).apply { orientation = LinearLayout.VERTICAL }
         col.addView(Ui.title(requireContext(), title, 15f).apply {
@@ -336,6 +376,9 @@ class FilesFragment : Fragment() {
             if (danger) setTextColor(ContextCompat.getColor(requireContext(), R.color.danger))
         })
         addView(col)
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { setMargins(0, Ui.dp(requireContext(), 4), 0, Ui.dp(requireContext(), 4)) }
     }
 
     private fun setAsHome(item: FileItem) {

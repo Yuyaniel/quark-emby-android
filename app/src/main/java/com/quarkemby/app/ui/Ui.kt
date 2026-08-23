@@ -44,6 +44,10 @@ object Ui {
     fun secondaryTextBtn(ctx: Context, label: String, onClick: () -> Unit): TextView =
         textBtn(ctx, label, R.drawable.bg_btn_secondary, R.color.ink, onClick)
 
+    /** Transparent fill + hairline outline; same height/radius as primary. */
+    fun outlineTextBtn(ctx: Context, label: String, onClick: () -> Unit): TextView =
+        textBtn(ctx, label, R.drawable.bg_btn_outline, R.color.ink, onClick)
+
     private fun textBtn(ctx: Context, label: String, bg: Int, textColor: Int, onClick: () -> Unit) =
         TextView(ctx).apply {
             text = label

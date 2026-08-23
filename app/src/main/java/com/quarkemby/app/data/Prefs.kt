@@ -112,6 +112,9 @@ object Prefs {
         return out
     }
 
+    /** Wipes the whole job history (task-log clear button). */
+    fun clearLogEntries() = plain.edit().remove(LOG_KEY).apply()
+
     fun formatTime(): String =
         SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
 

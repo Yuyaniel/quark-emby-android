@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="#33FFFFFF">
+    <!-- active tab pill: darker raised container hugging icon+label;
+         oversized radius clamps to half-height for a fully rounded pill -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#1B1C21" />
+            <corners android:radius="100dp" />
+        </shape>
+    </item>
+</ripple>

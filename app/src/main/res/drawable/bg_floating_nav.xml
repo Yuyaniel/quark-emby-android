@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Floating bottom navigation pill: deep charcoal capsule (photo style).
+     Oversized radius is clamped to half the height by the framework,
+     producing a perfectly round pill end. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#2E3038" />
+    <corners android:radius="100dp" />
+</shape>

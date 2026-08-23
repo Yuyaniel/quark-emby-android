@@ -31,7 +31,8 @@ class SettingsFragment : Fragment() {
         val scroll = ScrollView(requireContext())
         root = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(20, 20, 20, 30)
+            // extra bottom padding so content clears the floating nav pill
+            setPadding(20, 20, 20, Ui.dp(requireContext(), 92))
         }
         scroll.addView(root)
         return scroll

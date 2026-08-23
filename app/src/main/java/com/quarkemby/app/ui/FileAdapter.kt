@@ -51,7 +51,7 @@ class FileAdapter(
         h.icon.setImageResource(iconRes(item))
         h.name.text = item.name
         h.meta.text = when {
-            item.isFolder -> "文件夹 · 点击进入"
+            item.isFolder -> "文件夹"
             item.isSubtitle -> "字幕 · ${item.size}B"
             else -> formatSize(item.size)
         }

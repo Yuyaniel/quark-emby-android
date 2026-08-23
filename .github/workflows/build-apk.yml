@@ -1,0 +1,70 @@
+# 手动构建 APK：仅在 Actions 页面点击 "Run workflow" 时触发，push/PR 不触发
+name: 手动构建 APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: '构建类型'
+        required: true
+        default: debug
+        type: choice
+        options:
+          - debug
+          - release
+
+jobs:
+  build:
+    name: 构建 ${{ inputs.build_type }} APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # 自动开启 Gradle 依赖缓存，二次构建明显提速
+      - name: 设置 Gradle（含缓存）
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: 构建 APK
+        run: |
+          chmod +x gradlew
+          TYPE=$(echo "${{ inputs.build_type }}" | sed 's/^\(.\)/\U\1/')
+          ./gradlew "assemble$TYPE" --stacktrace
+
+      # release 没有配置签名，产物是 app-release-unsigned.apk 无法安装；
+      # 用一次性生成的调试密钥现场签名，保证两种类型都能直接装
+      - name: 签名 release APK（调试密钥）
+        if: inputs.build_type == 'release'
+        run: |
+          keytool -genkeypair -keystore debug.keystore -alias androiddebugkey \
+            -storepass android -keypass android -validity 9999 \
+            -dname "CN=Android Debug,O=Android,C=US"
+          BUILD_TOOLS=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)
+          BT="$ANDROID_HOME/build-tools/$BUILD_TOOLS"
+          "$BT/zipalign" -f 4 app/build/outputs/apk/release/app-release-unsigned.apk aligned.apk
+          "$BT/apksigner" sign --ks debug.keystore --ks-pass pass:android \
+            --key-pass pass:android --out signed.apk aligned.apk
+          mv signed.apk app/build/outputs/apk/release/app-release.apk
+
+      - name: 重命名 APK（附提交号）
+        run: |
+          TYPE="${{ inputs.build_type }}"
+          SRC="app/build/outputs/apk/${TYPE}/app-${TYPE}.apk"
+          DST="quark-emby-v1.0-${GITHUB_SHA::7}-${TYPE}.apk"
+          mv "$SRC" "$DST"
+          echo "apk_name=$DST" >> "$GITHUB_ENV"
+          ls -lh "$DST"
+
+      - name: 上传为构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.apk_name }}
+          path: ${{ env.apk_name }}
+          retention-days: 30

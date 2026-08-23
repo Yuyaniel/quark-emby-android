@@ -1,25 +1,95 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical">
+    android:layout_height="match_parent">
 
+    <!-- fragments render edge-to-edge; their scrollables pad their bottoms
+         so content scrolls UNDER the floating nav pill -->
     <FrameLayout
         android:id="@+id/fragment_container"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
+        android:layout_height="match_parent" />
 
-    <com.google.android.material.bottomnavigation.BottomNavigationView
+    <!-- floating dark-capsule bottom bar (pure View system, photo style):
+         charcoal pill that WRAPS its two items (no dead side space) and is
+         centered horizontally; the ACTIVE tab gets its own darker rounded
+         container hugging icon+label (white content), idle tabs are
+         transparent with grey content. -->
+    <LinearLayout
         android:id="@+id/bottom_nav"
-        android:layout_width="match_parent"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:background="@color/surface_container"
-        android:elevation="2dp"
-        app:menu="@menu/bottom_nav"
-        app:labelVisibilityMode="labeled"
-        app:itemIconTint="@color/nav_item_color"
-        app:itemTextColor="@color/nav_item_color"
-        app:itemActiveIndicatorStyle="@style/Widget.Material3.BottomNavigationView.ActiveIndicator" />
-</LinearLayout>
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="12dp"
+        android:orientation="horizontal"
+        android:baselineAligned="false"
+        android:gravity="center"
+        android:paddingHorizontal="8dp"
+        android:paddingTop="7dp"
+        android:paddingBottom="7dp"
+        android:background="@drawable/bg_floating_nav"
+        android:elevation="8dp">
+
+        <LinearLayout
+            android:id="@+id/nav_files"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center_horizontal"
+            android:paddingHorizontal="34dp"
+            android:paddingTop="10dp"
+            android:paddingBottom="10dp"
+            android:background="@drawable/bg_nav_pill_idle"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:id="@+id/nav_files_icon"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:contentDescription="@string/tab_files"
+                android:src="@drawable/ic_folder" />
+
+            <TextView
+                android:id="@+id/nav_files_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/tab_files"
+                android:textSize="13sp"
+                android:lineSpacingExtra="0dp"
+                android:includeFontPadding="false" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/nav_settings"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center_horizontal"
+            android:paddingHorizontal="34dp"
+            android:paddingTop="10dp"
+            android:paddingBottom="10dp"
+            android:background="@drawable/bg_nav_pill_idle"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:id="@+id/nav_settings_icon"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:contentDescription="@string/tab_settings"
+                android:src="@drawable/ic_settings" />
+
+            <TextView
+                android:id="@+id/nav_settings_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/tab_settings"
+                android:textSize="13sp"
+                android:lineSpacingExtra="0dp"
+                android:includeFontPadding="false" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>
