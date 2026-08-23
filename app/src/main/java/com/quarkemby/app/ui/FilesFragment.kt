@@ -95,11 +95,12 @@ class FilesFragment : Fragment() {
         val col = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(24, 20, 24, 24)
+            setBackgroundResource(R.color.surface)
             addView(menuTitle(item))
             if (item.isFolder) {
                 addView(menuRow("🎬", "Emby 批量重命名", "剧集整理 · 核心功能") {
                     sheet.dismiss()
-                    MainActivity.INSTANCE.openRenameWizard(item)
+                    RenameWizardFragment.newInstance(item).show(childFragmentManager, "rename_wizard")
                 })
             }
             addView(menuRow("✏️", "重命名", "手动修改名称") { sheet.dismiss(); showRename(item) })

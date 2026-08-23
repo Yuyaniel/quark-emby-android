@@ -3,6 +3,7 @@
     <color name="brand_primary">#4F6DF5</color>
     <color name="brand_secondary">#8B5CF6</color>
     <color name="bg">#F6F7FB</color>
+    <color name="surface">#FFFFFF</color>
     <color name="ink">#1C2130</color>
     <color name="muted">#6A7183</color>
     <color name="divider">#E6E8F0</color>

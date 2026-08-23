@@ -11,10 +11,11 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
-import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.quarkemby.app.R
 import com.quarkemby.app.data.Prefs
 import com.quarkemby.app.data.QuarkApi
@@ -28,13 +29,13 @@ import com.quarkemby.app.util.RenamePlanner
 import kotlinx.coroutines.launch
 
 /**
- * Core Emby batch-renaming wizard.
+ * Core Emby batch-renaming wizard, shown as a bottom-sheet dialog.
  * Steps: input show name -> TMDB match/selection -> preview (with conflict
  * detection) -> execute (create Season folders, rename, move) -> result.
  */
-class RenameWizardFragment : Fragment() {
+class RenameWizardFragment : BottomSheetDialogFragment() {
 
-    private val folder: FileItem by lazy {
+    private val folder by lazy {
         val a = arguments!!
         FileItem(fid = a.getString(ARG_FID)!!, name = a.getString(ARG_NAME)!!, type = 0)
     }
@@ -45,7 +46,7 @@ class RenameWizardFragment : Fragment() {
     private var tmdbResults: List<TmdbShow> = emptyList()
 
     private lateinit var root: LinearLayout
-    private var scroll: android.widget.ScrollView? = null
+    private var scroll: ScrollView? = null
 
     companion object {
         private const val ARG_FID = "fid"
@@ -59,10 +60,16 @@ class RenameWizardFragment : Fragment() {
     }
 
     override fun onCreateView(i: LayoutInflater, c: ViewGroup?, s: Bundle?): View {
-        scroll = android.widget.ScrollView(requireContext())
+        scroll = ScrollView(requireContext()).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                (resources.displayMetrics.heightPixels * 0.8).toInt()
+            )
+        }
         root = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(20, 20, 20, 30)
+            setBackgroundResource(R.color.surface)
         }
         scroll!!.addView(root)
         return scroll!!
@@ -110,6 +117,7 @@ class RenameWizardFragment : Fragment() {
             Prefs.lastSelectedShow = null
             buildAndPreview(nameInput.text.toString().trim())
         })
+        root.addView(button("取消") { dismiss() })
     }
 
     private fun searchTmdb(name: String, year: String) {
@@ -128,7 +136,7 @@ class RenameWizardFragment : Fragment() {
                     setTextColor(resources.getColor(R.color.danger, null)); setPadding(0, 8, 0, 8)
                 })
                 root.addView(button("⚡ 不使用 TMDB 直接整理") { buildAndPreview(name) })
-                root.addView(button("返回") { requireActivity().onBackPressed() })
+                root.addView(button("返回") { renderStep1() })
             }
         }
     }
@@ -148,7 +156,6 @@ class RenameWizardFragment : Fragment() {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                 setPadding(8, 10, 8, 10)
                 isClickable = true
-                setBackgroundResource(if (selectedShow?.id == show.id) R.color.bg else 0)
                 setOnClickListener {
                     selectedShow = show
                     renderStep2(showName)
@@ -176,6 +183,7 @@ class RenameWizardFragment : Fragment() {
         val chosenName = selectedShow?.name ?: showName
         root.addView(button("使用所选剧集 · 继续") { buildAndPreview(chosenName) })
         root.addView(button("跳过 TMDB 直接整理") { buildAndPreview(showName) })
+        root.addView(button("取消") { dismiss() })
     }
 
     // ---------- Step 3 ----------
@@ -231,6 +239,7 @@ class RenameWizardFragment : Fragment() {
         } else {
             root.addView(button("🚀 确认并写入网盘") { execute(p) })
         }
+        root.addView(button("取消") { dismiss() })
     }
 
     // ---------- Step 4: execute ----------
@@ -330,7 +339,7 @@ class RenameWizardFragment : Fragment() {
             })
         }
         root.addView(spacer())
-        root.addView(button("完成 · 返回文件列表") { requireActivity().onBackPressed() })
+        root.addView(button("完成") { dismiss() })
     }
 
     // ---------- helpers ----------

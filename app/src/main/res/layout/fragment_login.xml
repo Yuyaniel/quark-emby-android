@@ -76,7 +76,7 @@
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:padding="14dp"
-        android:background="@color/white">
+        android:background="@color/surface">
 
         <Button
             android:id="@+id/login_done"

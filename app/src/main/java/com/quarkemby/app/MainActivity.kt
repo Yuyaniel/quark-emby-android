@@ -6,11 +6,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.quarkemby.app.data.Prefs
-import com.quarkemby.app.data.models.FileItem
 import com.quarkemby.app.ui.LoginFragment
 import com.quarkemby.app.ui.LogFragment
 import com.quarkemby.app.ui.FilesFragment
-import com.quarkemby.app.ui.RenameWizardFragment
 import com.quarkemby.app.ui.SettingsFragment
 
 class MainActivity : AppCompatActivity() {
@@ -74,10 +72,6 @@ class MainActivity : AppCompatActivity() {
 
     fun showLog() {
         addFragment(LogFragment(), true, "log")
-    }
-
-    fun openRenameWizard(folder: FileItem) {
-        addFragment(RenameWizardFragment.newInstance(folder), true, "wizard")
     }
 
     override fun onBackPressed() {
