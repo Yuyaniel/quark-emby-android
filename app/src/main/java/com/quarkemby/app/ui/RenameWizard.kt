@@ -126,53 +126,65 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
 
     // ---------- Step 1 ----------
     private fun renderStep1() {
-        root.addView(stepHeader("第 1 步 · 剧集名称与季号"))
+        root.addView(stepHeader("第 1 步 · 剧集名称"))
         // cleaned name pre-computed defensively ("九门(2026)" -> "九门")
         val cleaned = runCatching { ShowNames.clean(folder.name) }.getOrDefault(folder.name)
         val nameInput = EditText(context).apply {
             hint = "剧集名称"; setSingleLine(true)
             setText(cleaned)
         }
+        root.addView(nameInput); root.addView(spacer())
+        root.addView(TextView(context).apply {
+            text = "已自动去除年份等杂项（九门(2026) → 九门），可手动修改"
+            textSize = 12f
+            setTextColor(ContextCompat.getColor(context, R.color.muted))
+            setPadding(4, 0, 4, 10)
+        })
+
+        // TMDB path: season NOT required — season chips come from TMDB in step 2
+        root.addView(button("TMDB 搜索（无需季号 · 带封面与剧集标题）") {
+            val name = nameInput.text.toString().trim()
+            if (name.isEmpty()) { toast("请输入剧集名称"); return@button }
+            searchTmdb(name)
+        })
+
+        root.addView(dividerWithLabel("或 使用本地解析"))
         val seasonInput = EditText(context).apply {
             hint = "第几季（可选）"
             setSingleLine(true)
             inputType = InputType.TYPE_CLASS_NUMBER
         }
-        root.addView(nameInput); root.addView(spacer())
         root.addView(seasonInput); root.addView(spacer())
-        root.addView(TextView(context).apply {
-            text = "季号留空：九门.01.mp4 ／ 填 1：九门.S01E01.mp4\n" +
-                    "使用 TMDB 时季数无需填写：选剧后在下一步以 TMDB 的季为准（默认第 1 季）"
-            textSize = 12f
-            setTextColor(ContextCompat.getColor(context, R.color.muted))
-            setPadding(4, 0, 4, 4)
-        })
-
-        root.addView(button("TMDB 搜索（封面确认 · 含剧集标题）") {
-            val name = nameInput.text.toString().trim()
-            if (name.isEmpty()) { toast("请输入剧集名称"); return@button }
-            val season = readSeason(seasonInput) ?: return@button
-            searchTmdb(name, season)
-        })
         root.addView(buttonSub("整理重命名(本地解析)") {
             val name = nameInput.text.toString().trim()
             if (name.isEmpty()) { toast("请输入剧集名称"); return@buttonSub }
-            val season = readSeason(seasonInput) ?: return@buttonSub
+            val raw = seasonInput.text.toString().trim()
+            val season = raw.toIntOrNull()?.takeIf { it in 1..99 }
+            if (raw.isNotEmpty() && season == null) {
+                toast("季号请填 1-99 的数字，或留空"); return@buttonSub
+            }
             buildAndPreview(name, season, null)
+        })
+        root.addView(TextView(context).apply {
+            text = "本地解析：季号留空 → 九门.01.mp4，填 1 → 九门.S01E01.mp4"
+            textSize = 12f
+            setTextColor(ContextCompat.getColor(context, R.color.muted))
+            setPadding(4, 2, 4, 4)
         })
         root.addView(buttonSub("取消") { dismiss() })
     }
 
-    private fun readSeason(input: EditText): Int? {
-        val raw = input.text.toString().trim()
-        if (raw.isEmpty()) return null
-        val v = raw.toIntOrNull()?.takeIf { it in 1..99 }
-        if (v == null) toast("季号请填 1-99 的数字，或留空")
-        return v
+    /** Small centered "or" divider used to separate the two rename paths. */
+    private fun dividerWithLabel(label: String) = TextView(context).apply {
+        text = label
+        textSize = 12f
+        gravity = Gravity.CENTER
+        setTextColor(ContextCompat.getColor(context, R.color.muted))
+        setPadding(0, Ui.dp(context, 10), 0, Ui.dp(context, 10))
     }
 
     // ---------- Step 2: TMDB results + season chips ----------
-    private fun searchTmdb(name: String, season: Int?) {
+    private fun searchTmdb(name: String) {
         val key = Prefs.tmdbKey
         if (key.isBlank()) {
             toast("请先在「设置」中填写 TMDB API Key，或使用本地解析")
@@ -184,8 +196,8 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
                 tmdbResults = TmdbApi.searchTv(key, name, Prefs.tmdbLanguage)
                 selectedShow = null
                 seasonList = emptyList()
-                tmdbSeasonSel = season ?: 1
-                safeRender("step2") { renderTitle(); renderStep2Body(name, season) }
+                tmdbSeasonSel = 1
+                safeRender("step2") { renderTitle(); renderStep2Body(name) }
             } catch (e: Exception) {
                 safeRender("tmdb-error") {
                     renderTitle()
@@ -193,7 +205,7 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
                         text = e.message ?: "TMDB 搜索失败"; textSize = 14f
                         setTextColor(ContextCompat.getColor(context, R.color.danger)); setPadding(0, 8, 0, 8)
                     })
-                    root.addView(buttonSub("整理重命名(本地解析)") { buildAndPreview(name, season, null) })
+                    root.addView(buttonSub("整理重命名(本地解析)") { buildAndPreview(name, null, null) })
                     root.addView(buttonSub("返回") { safeRender("step1") { renderTitle(); renderStep1() } })
                 }
             }
@@ -201,84 +213,45 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
     }
 
     /** Selecting a show also loads its seasons from TMDB for the chip row. */
-    private fun selectShow(show: TmdbApi.Show, queryName: String, typedSeason: Int?) {
+    private fun selectShow(show: TmdbApi.Show, queryName: String) {
         selectedShow = show
         seasonList = emptyList()
-        tmdbSeasonSel = typedSeason ?: 1
-        safeRender("step2") { renderTitle(); renderStep2Body(queryName, typedSeason, loadingSeasons = true) }
+        tmdbSeasonSel = 1
+        safeRender("step2") { renderTitle(); renderStep2Body(queryName, loadingSeasons = true) }
         scope.launch {
             // season list straight from TMDB; failures fall back to a plain
             // "第 1 季" chip so the flow never dead-ends
             val loaded = runCatching {
                 TmdbApi.tvSeasons(Prefs.tmdbKey, show.id, Prefs.tmdbLanguage)
             }.getOrDefault(emptyList())
-            seasonList = loaded.ifEmpty {
-                listOf(TmdbApi.SeasonInfo(tmdbSeasonSel, "第 $tmdbSeasonSel 季", 0))
+            seasonList = loaded.ifEmpty { listOf(TmdbApi.SeasonInfo(1, "第 1 季", 0)) }
+            if (seasonList.none { it.number == tmdbSeasonSel }) {
+                tmdbSeasonSel = seasonList.first().number
             }
-            // typed season wins when it exists on TMDB, otherwise keep it as-is
-            if (typedSeason != null && seasonList.any { it.number == typedSeason }) {
-                tmdbSeasonSel = typedSeason
-            }
-            safeRender("step2") { renderTitle(); renderStep2Body(queryName, typedSeason) }
+            safeRender("step2") { renderTitle(); renderStep2Body(queryName) }
         }
     }
 
-    private fun renderStep2Body(queryName: String, typedSeason: Int?, loadingSeasons: Boolean = false) {
+    private fun renderStep2Body(queryName: String, loadingSeasons: Boolean = false) {
         root.addView(stepHeader("第 2 步 · 选择剧集与季"))
         if (tmdbResults.isEmpty()) {
             root.addView(TextView(context).apply {
                 text = "没有找到匹配结果，可直接使用本地解析整理。"
                 textSize = 13f; setTextColor(ContextCompat.getColor(context, R.color.muted)); setPadding(0, 8, 0, 8)
             })
-        }
-        tmdbResults.forEach { show ->
-            val row = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(8, 10, 8, 10)
-                isClickable = true
-                foreground = ContextCompat.getDrawable(context, R.drawable.ripple_fg)
-                background = GradientDrawable().apply {
-                    cornerRadius = Ui.dp(context, 12).toFloat()
-                    setColor(
-                        ContextCompat.getColor(
-                            context,
-                            if (selectedShow?.id == show.id) R.color.primary_container
-                            else R.color.surface_container_high
-                        )
-                    )
-                }
-                setOnClickListener { selectShow(show, queryName, typedSeason) }
+        } else {
+            // fixed-height scroll area: 3 rows visible, rest scroll up/down
+            val listScroll = ScrollView(context).apply {
+                isVerticalScrollBarEnabled = false
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    Ui.dp(context, 113 * minOf(3, tmdbResults.size))
+                )
             }
-            // poster thumbnail for visual confirmation
-            val poster = ImageView(context).apply {
-                layoutParams = LinearLayout.LayoutParams(Ui.dp(context, 54), Ui.dp(context, 81))
-                    .apply { marginEnd = Ui.dp(context, 12) }
-                scaleType = ImageView.ScaleType.CENTER_CROP
-            }
-            Img.load(show.posterUrl, poster)
-            row.addView(poster)
-
-            val col = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-            col.addView(TextView(context).apply {
-                text = "${show.name}（${show.firstAirYear.ifEmpty { "未知年份" }}）"
-                textSize = 15f; setTypeface(Typeface.DEFAULT, Typeface.BOLD)
-                setTextColor(ContextCompat.getColor(context, R.color.ink))
-            })
-            col.addView(TextView(context).apply {
-                text = "TMDB ID: ${show.id}"
-                textSize = 11f; setTextColor(ContextCompat.getColor(context, R.color.muted))
-            })
-            row.addView(col, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-            row.addView(TextView(context).apply {
-                text = if (selectedShow?.id == show.id) "●" else "○"
-                textSize = 14f
-                setPadding(Ui.dp(context, 8), 0, 4, 0)
-                setTextColor(ContextCompat.getColor(context, R.color.brand_primary))
-            })
-            root.addView(row, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(0, Ui.dp(context, 6), 0, Ui.dp(context, 6)) })
+            val listCol = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+            tmdbResults.forEach { show -> listCol.addView(showRow(show, queryName)) }
+            listScroll.addView(listCol)
+            root.addView(listScroll)
         }
 
         // season chips of the selected show (TMDB is the authority for season)
@@ -291,12 +264,13 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
                 setTextColor(ContextCompat.getColor(context, R.color.ink))
                 setPadding(0, Ui.dp(context, 12), 0, 6)
             })
-            val chipRow = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
+            val chipScroll = android.widget.HorizontalScrollView(context).apply {
+                isHorizontalScrollBarEnabled = false
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
                 )
             }
+            val chipRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             seasonList.forEach { s ->
                 val active = s.number == tmdbSeasonSel
                 chipRow.addView(TextView(context).apply {
@@ -320,12 +294,13 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
                     }
                     setOnClickListener {
                         tmdbSeasonSel = s.number
-                        safeRender("step2") { renderTitle(); renderStep2Body(queryName, typedSeason) }
+                        safeRender("step2") { renderTitle(); renderStep2Body(queryName) }
                     }
                 })
                 chipRow.addView(spacerView(8, LinearLayout.HORIZONTAL))
             }
-            root.addView(chipRow)
+            chipScroll.addView(chipRow)
+            root.addView(chipScroll)
         }
 
         root.addView(spacer())
@@ -335,10 +310,58 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
             })
         }
         root.addView(buttonSub("跳过 TMDB · 整理重命名(本地解析)") {
-            buildAndPreview(queryName, typedSeason, null)
+            buildAndPreview(queryName, null, null)
         })
         root.addView(buttonSub("返回上一步") { safeRender("step1") { renderTitle(); renderStep1() } })
     }
+
+    /** One TMDB search-result row: poster + name + radio mark. */
+    private fun showRow(show: TmdbApi.Show, queryName: String): LinearLayout =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(8, 10, 8, 10)
+            isClickable = true
+            foreground = ContextCompat.getDrawable(context, R.drawable.ripple_fg)
+            background = GradientDrawable().apply {
+                cornerRadius = Ui.dp(context, 12).toFloat()
+                setColor(
+                    ContextCompat.getColor(
+                        context,
+                        if (selectedShow?.id == show.id) R.color.primary_container
+                        else R.color.surface_container_high
+                    )
+                )
+            }
+            setOnClickListener { selectShow(show, queryName) }
+            val poster = ImageView(context).apply {
+                layoutParams = LinearLayout.LayoutParams(Ui.dp(context, 54), Ui.dp(context, 81))
+                    .apply { marginEnd = Ui.dp(context, 12) }
+                scaleType = ImageView.ScaleType.CENTER_CROP
+            }
+            Img.load(show.posterUrl, poster)
+            addView(poster)
+            val col = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+            col.addView(TextView(context).apply {
+                text = "${show.name}（${show.firstAirYear.ifEmpty { "未知年份" }}）"
+                textSize = 15f; setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+                setTextColor(ContextCompat.getColor(context, R.color.ink))
+            })
+            col.addView(TextView(context).apply {
+                text = "TMDB ID: ${show.id}"
+                textSize = 11f; setTextColor(ContextCompat.getColor(context, R.color.muted))
+            })
+            addView(col, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            addView(TextView(context).apply {
+                text = if (selectedShow?.id == show.id) "●" else "○"
+                textSize = 14f
+                setPadding(Ui.dp(context, 8), 0, 4, 0)
+                setTextColor(ContextCompat.getColor(context, R.color.brand_primary))
+            })
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(0, Ui.dp(context, 6), 0, Ui.dp(context, 6)) }
+        }
 
     // ---------- Step 3: plan + preview ----------
     private fun buildAndPreview(showName: String, userSeason: Int?, show: TmdbApi.Show?) {

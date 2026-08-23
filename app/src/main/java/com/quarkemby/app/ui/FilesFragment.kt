@@ -1,5 +1,6 @@
 package com.quarkemby.app.ui
 
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -270,24 +271,27 @@ class FilesFragment : Fragment() {
         dlg.window?.setBackgroundDrawableResource(android.R.color.transparent)
         val col = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(24, 22, 24, 12)
+            setPadding(24, 22, 24, 16)
             setBackgroundResource(R.drawable.bg_scrim_dialog)
             addView(menuTitle(item))
+            // ---- common actions ----
             if (item.isFolder) {
-                addView(menuRow("批", "批量重命名", "剧集整理 · 核心功能", danger = false) {
+                addView(menuRow("批量重命名", "剧集整理 · 核心功能") {
                     dlg.dismiss()
                     // plain Dialog, same verified plumbing as this menu
                     RenameWizard(requireActivity(), item).show()
                 })
             }
-            addView(menuRow("名", "重命名", "手动修改名称", danger = false) { dlg.dismiss(); showRename(item) })
-            addView(menuRow("移", "移动到", "选择网盘内目标目录", danger = false) { dlg.dismiss(); showMove(item) })
+            addView(menuRow("重命名", "手动修改名称") { dlg.dismiss(); showRename(item) })
+            addView(menuRow("移动到", "选择网盘内目标目录") { dlg.dismiss(); showMove(item) })
             if (item.isFolder) {
-                addView(menuRow("首", "设为首页目录", "打开应用后默认进入此文件夹", danger = false) {
+                addView(menuRow("设为首页目录", "打开应用后默认进入此文件夹") {
                     dlg.dismiss(); setAsHome(item)
                 })
             }
-            addView(menuRow("删", "删除", "二次确认后移除", danger = true) { dlg.dismiss(); confirmDelete(item) })
+            // ---- destructive group, visually separated ----
+            addView(menuDivider())
+            addView(menuRow("删除", "二次确认后移除", danger = true) { dlg.dismiss(); confirmDelete(item) })
         }
         dlg.setContentView(col)
         Ui.centerWindow(dlg, 0.88f)
@@ -298,25 +302,39 @@ class FilesFragment : Fragment() {
     private fun menuTitle(item: FileItem): TextView = Ui.title(requireContext(), item.name, 17f).apply {
         maxLines = 1
         ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
-        setPadding(6, 0, 6, 10)
+        setPadding(8, 0, 8, Ui.dp(requireContext(), 10))
     }
 
+    /** Thin hairline separating the destructive group from common actions. */
+    private fun menuDivider(): View = View(requireContext()).apply {
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, Ui.dp(requireContext(), 1)
+        ).apply { setMargins(8, Ui.dp(requireContext(), 8), 8, Ui.dp(requireContext(), 8)) }
+        setBackgroundColor(ContextCompat.getColor(requireContext(), R.color.outline_variant))
+    }
+
+    /** Text-only menu row (no icon chip); danger rows render in warning red. */
     private fun menuRow(
-        icon: String, title: String, sub: String,
+        title: String, sub: String,
         danger: Boolean = false, action: () -> Unit
     ): LinearLayout = LinearLayout(requireContext()).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        setPadding(6, Ui.dp(requireContext(), 8), 6, Ui.dp(requireContext(), 8))
+        setPadding(14, Ui.dp(requireContext(), 11), 14, Ui.dp(requireContext(), 11))
         foreground = ContextCompat.getDrawable(requireContext(), R.drawable.ripple_fg)
         isClickable = true
+        background = if (danger) GradientDrawable().apply {
+            cornerRadius = Ui.dp(requireContext(), 12).toFloat()
+            setColor(ContextCompat.getColor(requireContext(), R.color.danger_container))
+        } else null
         setOnClickListener { action() }
-        addView(Ui.iconChip(requireContext(), icon))
         val col = LinearLayout(requireContext()).apply { orientation = LinearLayout.VERTICAL }
         col.addView(Ui.title(requireContext(), title, 15f).apply {
             if (danger) setTextColor(ContextCompat.getColor(requireContext(), R.color.danger))
         })
-        col.addView(Ui.helper(requireContext(), sub))
+        col.addView(Ui.helper(requireContext(), sub).apply {
+            if (danger) setTextColor(ContextCompat.getColor(requireContext(), R.color.danger))
+        })
         addView(col)
     }
 
