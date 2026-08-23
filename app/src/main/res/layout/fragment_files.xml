@@ -29,18 +29,6 @@
             android:background="@drawable/ripple_circle"
             android:visibility="gone" />
 
-        <!-- exit selection mode -->
-        <TextView
-            android:id="@+id/exit_sel_btn"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:gravity="center"
-            android:text="✕"
-            android:textColor="@color/ink"
-            android:textSize="18sp"
-            android:background="@drawable/ripple_circle"
-            android:visibility="gone" />
-
         <!-- breadcrumb path (clickable segments) -->
         <HorizontalScrollView
             android:id="@+id/crumb_scroll"
@@ -60,19 +48,6 @@
                 android:gravity="center_vertical" />
         </HorizontalScrollView>
 
-        <!-- selection-mode count title -->
-        <TextView
-            android:id="@+id/sel_count_text"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginStart="6dp"
-            android:text="已选中 0 项"
-            android:textColor="@color/ink"
-            android:textSize="17sp"
-            android:textStyle="bold"
-            android:visibility="gone" />
-
         <!-- normal-mode actions -->
         <TextView
             android:id="@+id/sort_btn"
@@ -87,17 +62,6 @@
             android:contentDescription="排序" />
 
         <TextView
-            android:id="@+id/select_btn"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:gravity="center"
-            android:text="☑"
-            android:textColor="@color/ink"
-            android:textSize="17sp"
-            android:background="@drawable/ripple_circle"
-            android:contentDescription="多选" />
-
-        <TextView
             android:id="@+id/refresh_btn"
             android:layout_width="44dp"
             android:layout_height="44dp"
@@ -107,32 +71,6 @@
             android:textSize="18sp"
             android:background="@drawable/ripple_circle"
             android:contentDescription="刷新" />
-
-        <!-- selection-mode actions (replace sort/select/refresh) -->
-        <TextView
-            android:id="@+id/sel_all_btn"
-            style="@style/TopAction"
-            android:text="全选"
-            android:visibility="gone" />
-
-        <TextView
-            android:id="@+id/sel_invert_btn"
-            style="@style/TopAction"
-            android:text="反选"
-            android:visibility="gone" />
-
-        <TextView
-            android:id="@+id/sel_move_btn"
-            style="@style/TopAction"
-            android:text="移动"
-            android:visibility="gone" />
-
-        <TextView
-            android:id="@+id/sel_del_btn"
-            style="@style/TopAction"
-            android:text="删除"
-            android:textColor="@color/danger"
-            android:visibility="gone" />
     </LinearLayout>
 
     <FrameLayout

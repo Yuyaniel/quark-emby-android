@@ -1,6 +1,5 @@
 package com.quarkemby.app.ui
 
-import android.app.Dialog
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -9,7 +8,6 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.view.Window
 import android.view.WindowManager
 import android.widget.CheckBox
 import android.widget.EditText
@@ -79,58 +77,50 @@ class RenameWizardFragment : DialogFragment() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // theme 0 = default dialog theme; NO_TITLE keeps it clean.
+        // We deliberately do NOT override onCreateDialog: the custom
+        // Dialog subclass + full LayoutParams replacement used previously
+        // crashed on some devices. Standard plumbing only.
         setStyle(STYLE_NO_TITLE, 0)
-    }
-
-    override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
-        val d = object : Dialog(requireContext()) {
-            override fun onBackPressed() = dismiss()
-        }
-        val w: Window? = d.window
-        w?.setBackgroundDrawableResource(android.R.color.transparent)
-        w?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-        Ui.applyScrim(d, 0.5f)
-        return d
+        isCancelable = true
     }
 
     override fun onStart() {
         super.onStart()
-        val w = dialog?.window
-        w?.let {
-            // wrap-content + center gravity so the dialog floats exactly mid-screen
-            it.setGravity(Gravity.CENTER)
-            val lp = WindowManager.LayoutParams().apply {
-                copyFrom(it.attributes)
-                width = (resources.displayMetrics.widthPixels * 0.92).toInt()
-                height = WindowManager.LayoutParams.WRAP_CONTENT
-                verticalMargin = 0f
-            }
-            it.attributes = lp
+        // All window configuration happens here on the fragment's own dialog,
+        // mutating its existing attributes object (no copyFrom replacement).
+        dialog?.window?.let { w ->
+            w.setBackgroundDrawableResource(android.R.color.transparent)
+            w.setGravity(Gravity.CENTER)
+            w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+            val lp = w.attributes
+            lp.width = (resources.displayMetrics.widthPixels * 0.92).toInt()
+            lp.height = WindowManager.LayoutParams.WRAP_CONTENT
+            lp.dimAmount = 0.5f
+            lp.verticalMargin = 0f
+            w.attributes = lp
         }
         root.setBackgroundResource(R.drawable.bg_scrim_dialog)
     }
 
     override fun onCreateView(i: LayoutInflater, c: ViewGroup?, s: Bundle?): View {
         scroll = ScrollView(requireContext()).apply {
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
             isFillViewport = false
         }
         root = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(24, 22, 24, 26)
         }
-        scroll!!.addView(root, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        ))
+        // plain addView: ScrollView generates its own default layout params
+        scroll!!.addView(root)
         return scroll!!
     }
 
     override fun onViewCreated(view: View, s: Bundle?) {
+        // catch Throwable: any failure here must never take the app down,
+        // the wizard re-fetches lazily before building the preview anyway
         lifecycleScope.launch {
-            try { items = QuarkApi.list(folder.fid) } catch (e: Exception) { }
+            runCatching { items = QuarkApi.list(folder.fid) }
         }
         renderTitle()
         renderStep1()

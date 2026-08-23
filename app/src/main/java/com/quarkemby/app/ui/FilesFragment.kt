@@ -12,6 +12,7 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.ColorUtils
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -44,7 +45,6 @@ class FilesFragment : Fragment() {
 
     override fun onViewCreated(view: View, s: Bundle?) {
         adapter = FileAdapter(onClick = ::enterItem, onLongClick = ::openMenu)
-        adapter.onSelectionChanged = { count -> updateSelectionUi(count) }
         b.fileList.layoutManager = LinearLayoutManager(requireContext())
         b.fileList.adapter = adapter
         // soft vertical gaps between list cards
@@ -60,19 +60,11 @@ class FilesFragment : Fragment() {
         })
 
         b.backBtn.setOnClickListener { goUp() }
-        b.exitSelBtn.setOnClickListener { adapter.exitSelection() }
         b.refreshBtn.setOnClickListener { load() }
         b.sortBtn.setOnClickListener { showSortDialog() }
-        b.selectBtn.setOnClickListener {
-            if (adapter.selectionMode) adapter.exitSelection() else adapter.enterSelection()
-        }
-        b.selAllBtn.setOnClickListener { adapter.selectAll() }
-        b.selInvertBtn.setOnClickListener { adapter.invertSelection() }
-        b.selMoveBtn.setOnClickListener { showBatchMove() }
-        b.selDelBtn.setOnClickListener { confirmBatchDelete() }
 
         backCallback = object : OnBackPressedCallback(false) {
-            override fun handleOnBackPressed() = handleBack()
+            override fun handleOnBackPressed() = goUp()
         }
         requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner, backCallback)
 
@@ -131,7 +123,7 @@ class FilesFragment : Fragment() {
 
         val canGoUp = navStack.isNotEmpty()
         b.backBtn.visibility = if (canGoUp) View.VISIBLE else View.GONE
-        if (::backCallback.isInitialized) backCallback.isEnabled = canGoUp || adapter.selectionMode
+        if (::backCallback.isInitialized) backCallback.isEnabled = canGoUp
     }
 
     private fun separator(): TextView = TextView(requireContext()).apply {
@@ -139,7 +131,7 @@ class FilesFragment : Fragment() {
         textSize = 15f
         // lowered opacity per spec
         setTextColor(
-            androidx.core.graphics.ColorUtils.setAlphaComponent(
+            ColorUtils.setAlphaComponent(
                 ContextCompat.getColor(requireContext(), R.color.ink), 0x88
             )
         )
@@ -187,40 +179,8 @@ class FilesFragment : Fragment() {
             }
             currentFid = targetFid
         }
-        adapter.exitSelection()
         updatePath()
         load()
-    }
-
-    // ---------- selection toolbar ----------
-    private fun updateSelectionUi(count: Int) {
-        val selecting = adapter.selectionMode
-        b.crumbScroll.visibility = if (selecting) View.GONE else View.VISIBLE
-        b.backBtn.visibility = if (!selecting && navStack.isNotEmpty()) View.VISIBLE else View.GONE
-        b.exitSelBtn.visibility = if (selecting) View.VISIBLE else View.GONE
-        b.selCountText.visibility = if (selecting) View.VISIBLE else View.GONE
-        b.selCountText.text = "已选中 $count 项"
-
-        b.sortBtn.visibility = if (selecting) View.GONE else View.VISIBLE
-        b.selectBtn.visibility = if (selecting) View.GONE else View.VISIBLE
-        b.refreshBtn.visibility = if (selecting) View.GONE else View.VISIBLE
-
-        b.selAllBtn.visibility = if (selecting) View.VISIBLE else View.GONE
-        b.selInvertBtn.visibility = if (selecting) View.VISIBLE else View.GONE
-        b.selMoveBtn.visibility = if (selecting) View.VISIBLE else View.GONE
-        b.selDelBtn.visibility = if (selecting) View.VISIBLE else View.GONE
-
-        if (::backCallback.isInitialized) {
-            backCallback.isEnabled = selecting || navStack.isNotEmpty()
-        }
-    }
-
-    private fun handleBack() {
-        if (adapter.selectionMode || adapter.selectedCount > 0) {
-            adapter.exitSelection()
-            return
-        }
-        goUp()
     }
 
     // ---------- loading + sorting ----------
@@ -284,42 +244,6 @@ class FilesFragment : Fragment() {
             }
             .setNegativeButton("取消", null)
             .show()
-    }
-
-    // ---------- batch actions ----------
-    private fun confirmBatchDelete() {
-        val fids = adapter.selectedFids
-        if (fids.isEmpty()) { toast("未选择文件"); return }
-        AlertDialog.Builder(requireContext())
-            .setTitle("批量删除")
-            .setMessage("确定删除选中的 ${fids.size} 项？删除不可恢复。")
-            .setNegativeButton("取消", null)
-            .setPositiveButton("删除") { _, _ ->
-                lifecycleScope.launch {
-                    try {
-                        QuarkApi.delete(fids)
-                        adapter.exitSelection()
-                        toast("已删除 ${fids.size} 项")
-                        load()
-                    } catch (e: Exception) { toast(e.message ?: "删除失败") }
-                }
-            }
-            .show()
-    }
-
-    private fun showBatchMove() {
-        val fids = adapter.selectedFids
-        if (fids.isEmpty()) { toast("未选择文件"); return }
-        showMovePicker("移动到 · 选中 ${fids.size} 项") { dst ->
-            lifecycleScope.launch {
-                try {
-                    QuarkApi.move(fids, dst)
-                    adapter.exitSelection()
-                    toast("已移动 ${fids.size} 项")
-                    load()
-                } catch (e: Exception) { toast(e.message ?: "移动失败") }
-            }
-        }
     }
 
     // ---------- navigation ----------
