@@ -10,6 +10,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
@@ -32,6 +33,8 @@ class FilesFragment : Fragment() {
     private val nameStack = mutableListOf<String>()     // names
     private var currentFid = ""                          // "" = root
 
+    private lateinit var backCallback: OnBackPressedCallback
+
     override fun onCreateView(i: LayoutInflater, c: ViewGroup?, s: Bundle?): View {
         _b = FragmentFilesBinding.inflate(i, c, false)
         return b.root
@@ -43,6 +46,12 @@ class FilesFragment : Fragment() {
         b.fileList.adapter = adapter
         b.backBtn.setOnClickListener { goUp() }
         b.refreshBtn.setOnClickListener { load() }
+
+        backCallback = object : OnBackPressedCallback(false) {
+            override fun handleOnBackPressed() = goUp()
+        }
+        requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner, backCallback)
+
         // pre-existing path (e.g. from Settings "set as home") wins over saved home
         if (navStack.isEmpty() && Prefs.hasHomeFolder) {
             applyHomeFolder()
@@ -66,7 +75,10 @@ class FilesFragment : Fragment() {
     private fun updatePath() {
         val p = if (nameStack.isEmpty()) "根目录" else nameStack.joinToString(" / ")
         b.pathText.text = p
-        b.backBtn.visibility = if (navStack.isEmpty()) View.GONE else View.VISIBLE
+        val canGoUp = navStack.isNotEmpty()
+        b.backBtn.visibility = if (canGoUp) View.VISIBLE else View.GONE
+        // system back also navigates up when we are inside a folder tree
+        if (::backCallback.isInitialized) backCallback.isEnabled = canGoUp
     }
 
     private fun load() = lifecycleScope.launch {
