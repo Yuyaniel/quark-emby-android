@@ -187,7 +187,7 @@ class FilesFragment : Fragment() {
             val targetFid = if (j == nameStack.size - 1) currentFid else navStack[j + 1]
             while (nameStack.size > j + 1) {
                 nameStack.removeAt(nameStack.size - 1)
-                navStack.removeAt(navStack.size - 1)
+                navStack.removeAt(nameStack.size - 1)
             }
             currentFid = targetFid
         }
@@ -394,26 +394,84 @@ class FilesFragment : Fragment() {
 
     // ---- Rename ----
     private fun showRename(item: FileItem) {
+        val dlg = android.app.Dialog(requireContext())
+        dlg.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+        dlg.window?.setBackgroundDrawableResource(android.R.color.transparent)
+
+        val col = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(
+                Ui.dp(requireContext(), 22), Ui.dp(requireContext(), 24),
+                Ui.dp(requireContext(), 22), Ui.dp(requireContext(), 18)
+            )
+            setBackgroundResource(R.drawable.bg_center_dialog)
+        }
+
+        // headline + current name
+        col.addView(Ui.title(requireContext(), "重命名", 20f))
+        col.addView(Ui.subtitle(requireContext(), item.name).apply {
+            setPadding(0, Ui.dp(requireContext(), 2), 0, Ui.dp(requireContext(), 16))
+        })
+
+        // themed input
         val input = EditText(requireContext()).apply {
             setText(item.name)
             setSingleLine(true)
             hint = "新名称"
+            textSize = 15f
+            setTextColor(ContextCompat.getColor(requireContext(), R.color.ink))
+            setHintTextColor(ContextCompat.getColor(requireContext(), R.color.muted))
+            background = GradientDrawable().apply {
+                cornerRadius = Ui.dp(requireContext(), 10).toFloat()
+                setColor(ContextCompat.getColor(requireContext(), R.color.surface_container_high))
+                setStroke(Ui.dp(requireContext(), 1), ContextCompat.getColor(requireContext(), R.color.outline_variant))
+            }
+            setPadding(
+                Ui.dp(requireContext(), 14), Ui.dp(requireContext(), 12),
+                Ui.dp(requireContext(), 14), Ui.dp(requireContext(), 12)
+            )
         }
-        val pad = (24 * resources.displayMetrics.density + 0.5f).toInt()
-        AlertDialog.Builder(requireContext())
-            .setTitle("重命名")
-            .setView(input, pad, 0, pad, 0)
-            .setNegativeButton("取消", null)
-            .setPositiveButton("确定") { _, _ ->
+        col.addView(input)
+        col.addView(Ui.spacer(requireContext(), 8))
+
+        // right-aligned text buttons
+        col.addView(LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+            addView(renameTextBtn("取消") { dlg.dismiss() })
+            addView(renameTextBtn("确定", true) {
                 val name = input.text.toString().trim()
-                if (name.isEmpty()) { toast("名称不能为空"); return@setPositiveButton }
+                if (name.isEmpty()) { toast("名称不能为空"); return@renameTextBtn }
                 lifecycleScope.launch {
                     try { QuarkApi.rename(item.fid, name); load() }
                     catch (e: Exception) { toast(e.message ?: "重命名失败") }
                 }
-            }
-            .show()
+                dlg.dismiss()
+            })
+        })
+
+        dlg.setContentView(col)
+        Ui.centerWindow(dlg, 0.88f)
+        Ui.applyScrim(dlg)
+        dlg.show()
     }
+
+    private fun renameTextBtn(label: String, primary: Boolean = false, onClick: () -> Unit): TextView =
+        TextView(requireContext()).apply {
+            text = label
+            textSize = 14f
+            isClickable = true
+            isFocusable = true
+            setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+            setTextColor(
+                ContextCompat.getColor(
+                    requireContext(),
+                    if (primary) R.color.brand_primary else R.color.muted
+                )
+            )
+            setPadding(Ui.dp(requireContext(), 14), Ui.dp(requireContext(), 10), Ui.dp(requireContext(), 14), Ui.dp(requireContext(), 10))
+            setOnClickListener { onClick() }
+        }
 
     // ---- Delete ----
     private fun confirmDelete(item: FileItem) {

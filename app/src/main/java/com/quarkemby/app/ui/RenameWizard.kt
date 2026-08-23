@@ -741,7 +741,7 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
     // ---------- Step 4: execute ----------
     private fun execute(p: RenamePlanner.PlanResult, chosen: Set<Int>) {
         executing = true
-        stepHistory.clear()   // no step-back while jobs are running
+        stepHistory.clear()   // no-step back while jobs are running
         safeRender("exec") {
             renderTitle()
             root.addView(stepHeader("第 4 步 · 执行中 …"))
@@ -802,4 +802,77 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
     }
 
     private fun writeLog(success: List<String>, failed: List<Pair<String, String>>) {
-       引擎继续输出，未结束。我会继续调用工具，但需先等他完成。实际上，output is too large 被截断了。我应该使用文件上传方式或分次上传。$TRAE_REF已修复并推到 GitHub，主要做了以下改动：functions.run_mcp:1{
+        val detail = buildString {
+            success.forEach { append("成功：").append(it).append('\n') }
+            failed.forEach { append("失败：").append(it.first).append("（").append(it.second).append("）\n") }
+        }
+        Prefs.addLogEntry(
+            JobLogEntry(
+                id = Prefs.newId(), time = Prefs.formatTime(),
+                title = folder.name,
+                summary = "成功 ${success.size} · 失败 ${failed.size}",
+                detail = detail.ifEmpty { "无明细" }
+            )
+        )
+    }
+
+    private fun finishDemo(p: RenamePlanner.PlanResult) {
+        stepHistory.clear()
+        val ok = p.actions.filter { it.error.isEmpty() }.map { it.newName }
+        writeLog(ok, emptyList())
+        safeRender("done") { renderTitle(); renderStep4Body(ok, emptyList()) }
+    }
+
+    // ---------- Step 5 ----------
+    private fun renderStep4Body(success: List<String>, failed: List<Pair<String, String>>) {
+        root.addView(stepHeader("完成"))
+        root.addView(TextView(context).apply {
+            text = if (Prefs.previewOnly) {
+                "调试模式：仅预览，未写入网盘"
+            } else {
+                "成功 ${success.size} · 失败 ${failed.size}"
+            }
+            textSize = 16f; setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+            setTextColor(
+                ContextCompat.getColor(
+                    context, if (failed.isEmpty()) R.color.success else R.color.warn
+                )
+            )
+            setPadding(0, 8, 0, 8)
+        })
+        if (failed.isNotEmpty()) {
+            root.addView(TextView(context).apply {
+                text = failed.joinToString("\n") { "失败：${it.first}（${it.second}）" }
+                textSize = 13f; setTextColor(ContextCompat.getColor(context, R.color.danger))
+            })
+        }
+        root.addView(spacer())
+        root.addView(button("完成") { dismiss() })
+    }
+
+    // ---------- helpers ----------
+    private fun addStep(t: String) {
+        root.addView(stepHeader(t))
+    }
+
+    private fun stepHeader(t: String) = TextView(context).apply {
+        text = t; textSize = 16f; setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+        setTextColor(ContextCompat.getColor(context, R.color.brand_primary)); setPadding(0, 14, 0, 8)
+    }
+
+    private fun spacer() = Ui.spacer(context, 6)
+
+    /** Primary CTA — TextView-based for maximum device compatibility. */
+    private fun button(label: String, onClick: () -> Unit) =
+        Ui.primaryTextBtn(context, label, onClick)
+
+    /** Outlined action — transparent fill + hairline border, same shape as primary. */
+    private fun buttonOutline(label: String, onClick: () -> Unit) =
+        Ui.outlineTextBtn(context, label, onClick)
+
+    /** Secondary action — TextView-based for maximum device compatibility. */
+    private fun buttonSub(label: String, onClick: () -> Unit) =
+        Ui.secondaryTextBtn(context, label, onClick)
+
+    private fun toast(msg: String) = Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+}
