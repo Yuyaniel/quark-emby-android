@@ -7,7 +7,8 @@ data class FileItem(
     val type: Int,          // 0=folder, 1=file
     val size: Long = 0L,
     val path: String = "",  // full drive path
-    val ext: String = ""    // lowercased extension incl dot, e.g. ".mp4"
+    val ext: String = "",   // lowercased extension incl dot, e.g. ".mp4"
+    val updatedAt: Long = 0L // last modified unix ms
 ) {
     val isFolder: Boolean get() = type == 0
     val isVideo: Boolean

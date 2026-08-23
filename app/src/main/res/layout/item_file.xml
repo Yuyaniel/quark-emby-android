@@ -1,12 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/row_root"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
     android:gravity="center_vertical"
-    android:paddingHorizontal="16dp"
+    android:paddingHorizontal="10dp"
     android:paddingVertical="12dp"
     android:background="@color/surface">
+
+    <CheckBox
+        android:id="@+id/file_check"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="6dp"
+        android:visibility="gone"
+        android:focusable="false"
+        android:clickable="false" />
 
     <ImageView
         android:id="@+id/file_icon"

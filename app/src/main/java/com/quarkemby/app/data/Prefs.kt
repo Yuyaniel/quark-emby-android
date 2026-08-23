@@ -72,6 +72,14 @@ object Prefs {
         get() = plain.getBoolean("preview_only", true)
         set(v) = plain.edit().putBoolean("preview_only", v).apply()
 
+    // ---- Sort preference: "name" | "size" | "time", asc true=升序 ----
+    var sortKey: String
+        get() = plain.getString("sort_key", "name") ?: "name"
+        set(v) = plain.edit().putString("sort_key", v).apply()
+    var sortAsc: Boolean
+        get() = plain.getBoolean("sort_asc", true)
+        set(v) = plain.edit().putBoolean("sort_asc", v).apply()
+
     // ---- Home (default) folder ----
     var homeFolderFid: String
         get() = plain.getString("home_folder_fid", "") ?: ""

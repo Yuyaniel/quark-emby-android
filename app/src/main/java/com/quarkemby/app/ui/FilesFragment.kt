@@ -32,6 +32,7 @@ class FilesFragment : Fragment() {
     private val navStack = mutableListOf<String>()      // parent fids
     private val nameStack = mutableListOf<String>()     // names
     private var currentFid = ""                          // "" = root
+    private var loadedItems: List<FileItem> = emptyList()
 
     private lateinit var backCallback: OnBackPressedCallback
 
@@ -42,13 +43,23 @@ class FilesFragment : Fragment() {
 
     override fun onViewCreated(view: View, s: Bundle?) {
         adapter = FileAdapter(onClick = ::enterItem, onLongClick = ::openMenu)
+        adapter.onSelectionChanged = { count -> updateSelectionBar(count) }
         b.fileList.layoutManager = LinearLayoutManager(requireContext())
         b.fileList.adapter = adapter
-        b.backBtn.setOnClickListener { goUp() }
+
+        b.backBtn.setOnClickListener { handleBack() }
         b.refreshBtn.setOnClickListener { load() }
+        b.sortBtn.setOnClickListener { showSortDialog() }
+        b.selectBtn.setOnClickListener { toggleSelectionMode() }
+
+        b.selectAllBtn.setOnClickListener { adapter.selectAll() }
+        b.invertBtn.setOnClickListener { adapter.invertSelection() }
+        b.selectMoveBtn.setOnClickListener { showBatchMove() }
+        b.selectDeleteBtn.setOnClickListener { confirmBatchDelete() }
+        b.selectCancelBtn.setOnClickListener { adapter.exitSelection() }
 
         backCallback = object : OnBackPressedCallback(false) {
-            override fun handleOnBackPressed() = goUp()
+            override fun handleOnBackPressed() = handleBack()
         }
         requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner, backCallback)
 
@@ -77,18 +88,28 @@ class FilesFragment : Fragment() {
         b.pathText.text = p
         val canGoUp = navStack.isNotEmpty()
         b.backBtn.visibility = if (canGoUp) View.VISIBLE else View.GONE
-        // system back also navigates up when we are inside a folder tree
-        if (::backCallback.isInitialized) backCallback.isEnabled = canGoUp
+        if (::backCallback.isInitialized) backCallback.isEnabled = canGoUp || adapter.selectionMode
     }
 
+    private fun handleBack() {
+        // selection mode takes priority: first tap closes selection, not navigate up
+        if (adapter.selectionMode || adapter.selectedCount > 0) {
+            adapter.exitSelection()
+            return
+        }
+        goUp()
+    }
+
+    // ---------- loading + sorting ----------
     private fun load() = lifecycleScope.launch {
         b.loading.visibility = View.VISIBLE
         b.errorView.visibility = View.GONE
         b.emptyView.visibility = View.GONE
         try {
             val items = QuarkApi.list(currentFid)
-            adapter.submit(items)
-            b.emptyView.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
+            loadedItems = sort(items)
+            adapter.submit(loadedItems)
+            b.emptyView.visibility = if (loadedItems.isEmpty()) View.VISIBLE else View.GONE
         } catch (e: Exception) {
             if (e.message?.contains("失效") == true) {
                 MainActivity.INSTANCE.showLogin()
@@ -101,7 +122,103 @@ class FilesFragment : Fragment() {
         }
     }
 
+    /** Apply the saved sort preference while keeping folders grouped on top. */
+    private fun sort(items: List<FileItem>): List<FileItem> {
+        val (folders, files) = items.partition { it.isFolder }
+        val key = Prefs.sortKey
+        val asc = Prefs.sortAsc
+        // natural (ascending) comparator; direction applied by caller
+        fun cmp(a: FileItem, b: FileItem): Int = when (key) {
+            "size" -> a.size.compareTo(b.size)
+            "time" -> a.updatedAt.compareTo(b.updatedAt)
+            else -> a.name.lowercase().compareTo(b.name.lowercase()) // name
+        }
+        val dir = if (asc) 1 else -1
+        fun sortGroup(g: List<FileItem>) =
+            g.sortedWith(Comparator { a, b -> cmp(a, b) * dir })
+        return sortGroup(folders) + sortGroup(files)
+    }
+
+    private fun showSortDialog() {
+        val opts = listOf(
+            Triple("name", true, "名称 升序 (A→Z)"),
+            Triple("name", false, "名称 降序 (Z→A)"),
+            Triple("size", false, "大小 降序 (大→小)"),
+            Triple("size", true, "大小 升序 (小→大)"),
+            Triple("time", false, "修改时间 降序 (新→旧)"),
+            Triple("time", true, "修改时间 升序 (旧→新)")
+        )
+        val choice = arrayOf(opts.indices.firstOrNull {
+            opts[it].first == Prefs.sortKey && opts[it].second == Prefs.sortAsc
+        } ?: 0)
+        AlertDialog.Builder(requireContext())
+            .setTitle("排序方式")
+            .setSingleChoiceItems(opts.map { it.third }.toTypedArray(), choice[0]) { d, which ->
+                val (k, asc, _) = opts[which]
+                Prefs.sortKey = k; Prefs.sortAsc = asc
+                loadedItems = sort(loadedItems)
+                adapter.submit(loadedItems)
+                d.dismiss()
+                toast("已排序")
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    // ---------- selection ----------
+    private fun toggleSelectionMode() {
+        if (adapter.selectionMode) adapter.exitSelection() else adapter.enterSelection()
+    }
+
+    private fun updateSelectionBar(count: Int) {
+        if (adapter.selectionMode) {
+            b.selectBar.visibility = View.VISIBLE
+            b.selectCount.text = "已选 $count 项"
+        } else {
+            b.selectBar.visibility = View.GONE
+        }
+    }
+
+    private fun confirmBatchDelete() {
+        val fids = adapter.selectedFids
+        if (fids.isEmpty()) { toast("未选择文件"); return }
+        AlertDialog.Builder(requireContext())
+            .setTitle("批量删除")
+            .setMessage("确定删除选中的 ${fids.size} 项？删除不可恢复。")
+            .setNegativeButton("取消", null)
+            .setPositiveButton("删除") { _, _ ->
+                lifecycleScope.launch {
+                    try {
+                        QuarkApi.delete(fids)
+                        adapter.exitSelection()
+                        toast("已删除 ${fids.size} 项")
+                        load()
+                    } catch (e: Exception) { toast(e.message ?: "删除失败") }
+                }
+            }
+            .show()
+    }
+
+    private fun showBatchMove() {
+        val fids = adapter.selectedFids
+        if (fids.isEmpty()) { toast("未选择文件"); return }
+        // reuse the single-item move picker with the full selected list
+        showMovePicker("移动到 · 选中 ${fids.size} 项") { dst ->
+            lifecycleScope.launch {
+                try {
+                    QuarkApi.move(fids, dst)
+                    adapter.exitSelection()
+                    toast("已移动 ${fids.size} 项")
+                    load()
+                } catch (e: Exception) { toast(e.message ?: "移动失败") }
+            }
+        }
+    }
+
+    // ---------- navigation ----------
     private fun enterItem(item: FileItem) {
+        // when in selection mode the adapter intercepts taps, so folder-entry
+        // is only reachable in normal mode.
         if (!item.isFolder) { toast("文件：${item.name}"); return }
         navStack.add(currentFid)
         nameStack.add(item.name)
@@ -118,6 +235,7 @@ class FilesFragment : Fragment() {
         load()
     }
 
+    // ---------- item menu ----------
     private fun openMenu(item: FileItem) {
         val dlg = android.app.Dialog(requireContext())
         dlg.window?.setBackgroundDrawableResource(android.R.color.transparent)
@@ -155,7 +273,6 @@ class FilesFragment : Fragment() {
             height = WindowManager.LayoutParams.WRAP_CONTENT
         }
         w.attributes = lp
-        // round the corners of the content view
         val content = dlg.findViewById<ViewGroup>(android.R.id.content)
         if (content != null && content.childCount == 1) {
             content.getChildAt(0).setBackgroundResource(R.color.surface)
@@ -233,20 +350,23 @@ class FilesFragment : Fragment() {
             .show()
     }
 
-    // ---- Move ----
+    // ---- Move (single) ----
     private fun showMove(item: FileItem) {
-        // Browsing stack of folder fids; "" = root. Destination = top of stack.
+        showMovePicker("移动到 · ${item.name}") { dst ->
+            lifecycleScope.launch {
+                try { QuarkApi.move(listOf(item.fid), dst); load() }
+                catch (e: Exception) { toast(e.message ?: "移动失败") }
+            }
+        }
+    }
+
+    /** Generic folder picker that runs `commit(dstFid)` for the chosen target. */
+    private fun showMovePicker(title: String, commit: (String) -> Unit) {
         val stack = mutableListOf("")
         val dialog = AlertDialog.Builder(requireContext())
-            .setTitle("移动到 · ${item.name}")
+            .setTitle(title)
             .setNegativeButton("取消", null)
-            .setPositiveButton("移动到这里") { _, _ ->
-                val dst = stack.last()
-                lifecycleScope.launch {
-                    try { QuarkApi.move(listOf(item.fid), dst); load() }
-                    catch (e: Exception) { toast(e.message ?: "移动失败") }
-                }
-            }
+            .setPositiveButton("移动到这里") { _, _ -> commit(stack.last()) }
             .create()
 
         val body = LinearLayout(requireContext()).apply { orientation = LinearLayout.VERTICAL }

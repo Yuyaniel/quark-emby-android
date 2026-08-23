@@ -49,7 +49,6 @@ class RenameWizardFragment : DialogFragment() {
     private var plan: RenamePlanner.PlanResult? = null
     private var selectedShow: TmdbShow? = null
     private var tmdbResults: List<TmdbShow> = emptyList()
-    private val checkedActions = linkedSetOf<Int>() // indexes into plan.actions
 
     private lateinit var root: LinearLayout
     private var scroll: ScrollView? = null
@@ -235,8 +234,6 @@ class RenameWizardFragment : DialogFragment() {
             root.addView(stepHeader("加载文件并生成变更预览 …"))
             if (items.isEmpty()) items = runCatching { QuarkApi.list(folder.fid) }.getOrDefault(emptyList())
             plan = RenamePlanner.build(items, clean, Prefs.renameTemplate, Prefs.seasonTemplate)
-            // default-check every actionable item
-            plan!!.actions.forEachIndexed { idx, a -> if (a.error.isEmpty()) checkedActions.add(idx) }
             renderStep3(clean)
         }
     }
@@ -244,12 +241,13 @@ class RenameWizardFragment : DialogFragment() {
     private fun renderStep3(showName: String) {
         root.removeAllViews(); renderTitle()
         val p = plan!!
-        val checked = linkedSetOf<Int>()
+        val actionable = p.actions.indices.filter { p.actions[it].error.isEmpty() }
+        // default-check every actionable item so user can deselect individual rows
+        val checked = linkedSetOf<Int>().apply { addAll(actionable) }
 
         root.addView(stepHeader("第 3 步 · 预览重命名（勾选要执行的项目）"))
 
         // summary: stats
-        val actionable = p.actions.indices.filter { p.actions[it].error.isEmpty() }
         val conflictIdx = p.actions.indices.filter { p.actions[it].error.isNotEmpty() }
         root.addView(TextView(requireContext()).apply {
             text = "共 ${p.actions.size} 项，可执行 ${actionable.size} 项" +

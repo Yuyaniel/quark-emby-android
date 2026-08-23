@@ -165,9 +165,17 @@ object QuarkApi {
                 name = name,
                 type = if (isDir) 0 else 1,
                 size = it.optLong("size", 0L),
-                ext = name.substringAfterLast('.', "").let { if (it.isBlank()) "" else ".$it".lowercase() }
+                ext = name.substringAfterLast('.', "").let { if (it.isBlank()) "" else ".$it".lowercase() },
+                updatedAt = parseTime(it)
             )
         )
+    }
+
+    /** Parse update time; API often returns seconds, sometimes millis. */
+    private fun parseTime(it: JSONObject): Long {
+        val raw = it.optString("updated_at", it.optString("update_time", "0")).trim()
+        val t = raw.toLongOrNull() ?: return 0L
+        return if (t > 10_000_000_000L) t else t * 1000L
     }
 
     /** Create a folder under `parentFid` returning its fid. */
