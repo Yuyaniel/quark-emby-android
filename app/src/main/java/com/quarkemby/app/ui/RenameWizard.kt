@@ -229,32 +229,29 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
         }
     }
 
-    /** Selecting a show also loads its seasons from TMDB for the chip row. */
-    private fun selectShow(show: TmdbApi.Show, queryName: String) {
-        selectedShow = show
-        seasonList = emptyList()
-        tmdbSeasonSel = 1
-        safeRender("step2") { renderTitle(); renderStep2Body(queryName, loadingSeasons = true) }
+    /** Selecting a show loads its seasons from TMDB and jumps STRAIGHT to the
+     *  rename preview (season defaults to 1). The old intermediate step-2
+     *  re-render with season chips and a "使用所选剧集 · 继续" button is
+     *  removed — one confirm dialog, then preview. */
+    private fun confirmShowAndPreview(show: TmdbApi.Show) {
         scope.launch {
-            // season list straight from TMDB; failures fall back to a plain
-            // "第 1 季" chip so the flow never dead-ends
-            val loaded = runCatching {
+            safeRender("tmdb-loading") { renderTitle(); addStep("正在获取 TMDB 季信息 …") }
+            selectedShow = show
+            seasonList = runCatching {
                 TmdbApi.tvSeasons(Prefs.tmdbKey, show.id, Prefs.tmdbLanguage)
-            }.getOrDefault(emptyList())
-            seasonList = loaded.ifEmpty { listOf(TmdbApi.SeasonInfo(1, "第 1 季", 0)) }
-            if (seasonList.none { it.number == tmdbSeasonSel }) {
-                tmdbSeasonSel = seasonList.first().number
-            }
-            safeRender("step2") { renderTitle(); renderStep2Body(queryName) }
+            }.getOrDefault(emptyList()).ifEmpty { listOf(TmdbApi.SeasonInfo(1, "第 1 季", 0)) }
+            tmdbSeasonSel = if (seasonList.any { it.number == 1 }) 1 else seasonList.first().number
+            buildAndPreview(show.name, tmdbSeasonSel, show)
         }
     }
 
     /**
      * Step 2 — Material3 dark centered dialog (pure View system): wrap-height
      * NON-scrolling layout. Header (3 left-aligned lines) / plain column of
-     * top-4 rows (16dp gaps, no scrolling) / season chips / actions.
+     * top-4 rows (16dp gaps, no scrolling) / actions. Tapping a row opens
+     * the confirm dialog whose 开始整理 jumps straight to the preview.
      */
-    private fun renderStep2Body(queryName: String, loadingSeasons: Boolean = false) {
+    private fun renderStep2Body(queryName: String) {
         // fresh non-scrolling content view; window wraps its height exactly
         val page = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -287,7 +284,7 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
             })
         } else {
             shows.forEachIndexed { i, show ->
-                val row = showRow(show, queryName)
+                val row = showRow(show)
                 (row.layoutParams as LinearLayout.LayoutParams).topMargin =
                     if (i == 0) 0 else Ui.dp(context, 16)
                 page.addView(row)
@@ -301,61 +298,7 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
             })
         }
 
-        // season chips of the selected show (TMDB is the authority for season)
-        val sel = selectedShow
-        if (sel != null) {
-            page.addView(TextView(context).apply {
-                text = "选择季（以 TMDB 为准" +
-                        (if (loadingSeasons) " · 正在获取…" else "") + "）"
-                textSize = 13f; setTypeface(Typeface.DEFAULT, Typeface.BOLD)
-                setTextColor(ContextCompat.getColor(context, R.color.ink))
-                setPadding(0, Ui.dp(context, 12), 0, 6)
-            })
-            val chipScroll = android.widget.HorizontalScrollView(context).apply {
-                isHorizontalScrollBarEnabled = false
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-            }
-            val chipRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-            seasonList.forEach { s ->
-                val active = s.number == tmdbSeasonSel
-                chipRow.addView(TextView(context).apply {
-                    text = "第 ${s.number} 季" + (if (s.episodeCount > 0) " · ${s.episodeCount}集" else "")
-                    textSize = 13f
-                    isClickable = true
-                    setPadding(Ui.dp(context, 12), Ui.dp(context, 8), Ui.dp(context, 12), Ui.dp(context, 8))
-                    setTextColor(
-                        ContextCompat.getColor(
-                            context, if (active) R.color.on_primary else R.color.ink
-                        )
-                    )
-                    background = GradientDrawable().apply {
-                        cornerRadius = Ui.dp(context, 99).toFloat()
-                        setColor(
-                            ContextCompat.getColor(
-                                context,
-                                if (active) R.color.brand_primary else R.color.surface_container
-                            )
-                        )
-                    }
-                    setOnClickListener {
-                        tmdbSeasonSel = s.number
-                        safeRender("step2") { renderTitle(); renderStep2Body(queryName) }
-                    }
-                })
-                chipRow.addView(spacerView(8, LinearLayout.HORIZONTAL))
-            }
-            chipScroll.addView(chipRow)
-            page.addView(chipScroll)
-        }
-
-        // ---- primary action, then the two TextButtons bottom-right ----
-        if (sel != null) {
-            page.addView(button("使用所选剧集 · 继续（第 $tmdbSeasonSel 季 · 含剧集标题）") {
-                buildAndPreview(sel.name, tmdbSeasonSel, sel)
-            })
-        }
+        // ---- two TextButtons bottom-right ----
         page.addView(LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END
@@ -380,7 +323,7 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
      * title + "剧集 · 年份" secondary text. 8dp vertical padding. Tapping
      * the row opens a confirmation dialog instead of selecting directly.
      */
-    private fun showRow(show: TmdbApi.Show, queryName: String): LinearLayout =
+    private fun showRow(show: TmdbApi.Show): LinearLayout =
         LinearLayout(context).apply {
             val selected = selectedShow?.id == show.id
             orientation = LinearLayout.HORIZONTAL
@@ -388,7 +331,7 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
             setPadding(Ui.dp(context, 2), Ui.dp(context, 8), Ui.dp(context, 2), Ui.dp(context, 8))
             isClickable = true
             foreground = ContextCompat.getDrawable(context, R.drawable.ripple_fg)
-            setOnClickListener { showConfirmDialog(show, queryName) }
+            setOnClickListener { showConfirmDialog(show) }
 
             val poster = ImageView(context).apply {
                 layoutParams = LinearLayout.LayoutParams(Ui.dp(context, 64), Ui.dp(context, 90))
@@ -438,10 +381,10 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
      * Second-step confirmation: centered dialog showing the show's info
      * before committing (same structure as the scrape-confirm dialog):
      * left-aligned headline / poster+info row / explanation paragraph /
-     * right-aligned TextButtons. 开始整理 continues the original selection
-     * flow (load seasons -> step 2 with chips); 返回 just closes it.
+     * right-aligned TextButtons. 开始整理 loads seasons and jumps STRAIGHT
+     * to the rename preview (default season 1); 返回 just closes it.
      */
-    private fun showConfirmDialog(show: TmdbApi.Show, queryName: String) {
+    private fun showConfirmDialog(show: TmdbApi.Show) {
         val dlg = Dialog(context)
         dlg.requestWindowFeature(Window.FEATURE_NO_TITLE)
         dlg.window?.setBackgroundDrawableResource(android.R.color.transparent)
@@ -507,7 +450,7 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
 
             // ---- explanation paragraph, secondary color ----
             addView(TextView(context).apply {
-                text = "确认后将以 TMDB 的季信息进行整理，季数以 TMDB 为准，无需手动填写。"
+                text = "确认后将以 TMDB 信息（默认第 1 季，含剧集标题）直接生成重命名预览。"
                 textSize = 14f
                 setPadding(0, Ui.dp(context, 16), 0, Ui.dp(context, 8))
                 setTextColor(ContextCompat.getColor(context, R.color.muted))
@@ -520,7 +463,7 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
                 addView(textBtn("返回") { dlg.dismiss() })
                 addView(textBtn("开始整理") {
                     dlg.dismiss()
-                    selectShow(show, queryName)
+                    confirmShowAndPreview(show)
                 })
             })
         }
@@ -788,17 +731,6 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
     }
 
     private fun spacer() = Ui.spacer(context, 6)
-
-    private fun spacerView(sizeDp: Int, orientation: Int): View =
-        View(context).apply {
-            layoutParams = LinearLayout.LayoutParams(0, 0).apply {
-                if (orientation == LinearLayout.HORIZONTAL) {
-                    width = Ui.dp(context, sizeDp); height = 1
-                } else {
-                    width = 1; height = Ui.dp(context, sizeDp)
-                }
-            }
-        }
 
     /** Primary CTA — TextView-based for maximum device compatibility. */
     private fun button(label: String, onClick: () -> Unit) =
