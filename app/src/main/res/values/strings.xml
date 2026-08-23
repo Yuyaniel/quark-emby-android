@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">夸克 Emby 整理</string>
+    <string name="tab_files">文件</string>
+    <string name="tab_settings">设置</string>
+    <string name="login_btn">开始登录</string>
+    <string name="logout">退出登录</string>
+    <string name="emby_rename">Emby 批量重命名</string>
+    <string name="rename">重命名</string>
+    <string name="move">移动到</string>
+    <string name="delete">删除</string>
+    <string name="refresh">刷新</string>
+    <string name="back">返回</string>
+</resources>
