@@ -8,6 +8,7 @@ build/
 local.properties
 *.jks
 *.keystore
+keystore.properties
 captures/
 .externalNativeBuild/
 .cxx/
@@ -21,4 +22,4 @@ captures/
 *.log
 
 # Android
-app/release/keystore.properties
+app/release/
