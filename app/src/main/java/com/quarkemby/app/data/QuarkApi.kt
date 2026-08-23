@@ -189,7 +189,7 @@ object QuarkApi {
     /** Rename a single file/folder. */
     suspend fun rename(fid: String, newName: String) = withContext(Dispatchers.IO) {
         val body = JSONObject().apply {
-            put("filelist", JSONArray().put(fid))
+            put("fid", fid)
             put("file_name", newName)
         }
         post("/file/rename?pr=ucpro&fr=pc&uc_param_str=", body)
@@ -202,6 +202,8 @@ object QuarkApi {
         val body = JSONObject().apply {
             put("filelist", arr)
             put("to_pdir_fid", if (dstFid.isBlank()) "0" else dstFid)
+            put("exclude_fids", JSONArray())
+            put("action_type", 1)
         }
         post("/file/move?pr=ucpro&fr=pc&uc_param_str=", body)
     }
