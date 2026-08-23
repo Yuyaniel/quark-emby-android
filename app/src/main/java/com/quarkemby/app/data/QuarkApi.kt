@@ -97,17 +97,21 @@ object QuarkApi {
         }
     }
 
-    /** Uniform error handling: HTTP 200 bodies still carry {status, code, message}. */
+    /**
+     * Uniform error handling. The Quark PC API reports success with
+     * `{code:0}` and, on many endpoints, also sets `status:200`. Official
+     * clients check `code != 0` for failure, so we do the same here.
+     */
     private fun checkRoot(json: JSONObject): JSONObject {
-        val status = json.optInt("status", 0)
-        if (status != 0) {
-            val code = json.optString("code", "")
-            if (code.lowercase() in listOf("nologin", "logincheck", "401", "40000005", "40200001") ||
-                code == "0" && status in listOf(401, 403, 99)
-            ) {
+        val code = json.optString("code", "0")   // default 0 = success when field absent
+        if (code != "0") {
+            val lower = code.lowercase()
+            if (lower in setOf("nologin", "logincheck", "401", "40000005", "40200001", "999999")) {
                 throw QuarkException("登录凭证已失效，请重新登录")
             }
-            throw QuarkException(json.optString("message", "请求失败 status=$status code=$code"))
+            val msg = json.optString("message", "请求失败 code=$code")
+            if (msg.isNotBlank()) throw QuarkException(msg)
+            throw QuarkException("请求失败 code=$code")
         }
         return json
     }
@@ -120,7 +124,10 @@ object QuarkApi {
             "pdir_fid" to pid,
             "_page" to "1", "_size" to "200",
             "_fetch_total" to "1", "_fetch_sub_dirs" to "0",
-            "_sort" to "file_type:asc,updated_at:desc"
+            "_sort" to "file_type:asc,updated_at:desc",
+            "_fetch_full_path" to "0",
+            "fetch_all_file" to "1",
+            "fetch_risk_file_name" to "1"
         ))
         val data = json.optJSONObject("data") ?: JSONObject()
         // list may be either an array directly or an array of {files: [...]}
@@ -137,6 +144,8 @@ object QuarkApi {
             }
         }
         out.sortedWith(compareBy({ !it.isFolder }, { it.name.lowercase() }))
+        if (out.isEmpty()) Log.w(TAG, "list($pid) empty. raw=${json.toString().take(500)}")
+        out
     }
 
     private fun parseItem(it: JSONObject, out: MutableList<FileItem>) {
