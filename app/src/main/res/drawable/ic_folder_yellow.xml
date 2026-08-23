@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <!-- 文件夹后板（略深黄） -->
+    <path
+        android:fillColor="#F0C419"
+        android:pathData="M20,14L16,10H8C5.8,10 4,11.8 4,14v22c0,2.2 1.8,4 4,4h32c2.2,0 4,-1.8 4,-4V18c0,-2.2 -1.8,-4 -4,-4z" />
+    <!-- 文件夹前板（亮黄） -->
+    <path
+        android:fillColor="#FFD54D"
+        android:pathData="M4,16v22c0,2.2 1.8,4 4,4h32c2.2,0 4,-1.8 4,-4V16c0,-2.2 -1.8,-4 -4,-4H20l-4,-4H8C5.8,8 4,9.8 4,12s1.8,4 4,4z" />
+</vector>

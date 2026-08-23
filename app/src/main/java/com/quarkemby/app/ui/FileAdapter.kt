@@ -3,6 +3,7 @@ package com.quarkemby.app.ui
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.quarkemby.app.R
@@ -29,11 +30,11 @@ class FileAdapter(
         return String.format("%.1f %s", v, units[u])
     }
 
-    private fun icon(item: FileItem): String = when {
-        item.isFolder -> "📁"
-        item.isVideo -> "🎬"
-        item.isSubtitle -> "🔤"
-        else -> "📄"
+    private fun iconRes(item: FileItem): Int = when {
+        item.isFolder -> R.drawable.ic_folder_yellow
+        item.isVideo -> R.drawable.ic_video
+        item.isSubtitle -> R.drawable.ic_subtitle
+        else -> R.drawable.ic_file
     }
 
     override fun onCreateViewHolder(p: ViewGroup, vt: Int): VH =
@@ -43,7 +44,7 @@ class FileAdapter(
 
     override fun onBindViewHolder(h: VH, pos: Int) {
         val item = items[pos]
-        h.icon.text = icon(item)
+        h.icon.setImageResource(iconRes(item))
         h.name.text = item.name
         h.meta.text = when {
             item.isFolder -> "文件夹 · 点击进入"
@@ -56,7 +57,7 @@ class FileAdapter(
 
     class VH(v: View) : RecyclerView.ViewHolder(v) {
         val root: View = v
-        val icon: TextView = v.findViewById(R.id.file_icon)
+        val icon: ImageView = v.findViewById(R.id.file_icon)
         val name: TextView = v.findViewById(R.id.file_name)
         val meta: TextView = v.findViewById(R.id.file_meta)
     }

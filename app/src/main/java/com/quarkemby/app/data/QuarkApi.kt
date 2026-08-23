@@ -149,7 +149,13 @@ object QuarkApi {
     }
 
     private fun parseItem(it: JSONObject, out: MutableList<FileItem>) {
-        val isDir = it.optInt("dir", 0) == 1 || it.optString("dir", "0") == "1"
+        // dir is reported as boolean true/1 on the PC API; be tolerant of all forms.
+        val isDir = when (val d = it.opt("dir")) {
+            is Boolean -> d
+            is Number -> d.toInt() == 1
+            is String -> d == "1" || d.equals("true", true)
+            else -> false
+        }
         val name = it.optString("file_name", "")
         val fid = it.optString("fid", "")
         if (fid.isEmpty() || name.isEmpty()) return
