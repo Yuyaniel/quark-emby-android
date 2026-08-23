@@ -52,13 +52,23 @@ object Prefs {
         secure.edit().remove("quark_cookies").remove("quark_headers").apply()
     }
 
+    // ---- TMDB (optional, used to enrich names with episode titles) ----
+    var tmdbKey: String
+        get() = secure.getString("tmdb_key", "") ?: ""
+        set(v) = secure.edit().putString("tmdb_key", v).apply()
+    var tmdbLanguage: String
+        get() = plain.getString("tmdb_lang", "zh-CN") ?: "zh-CN"
+        set(v) = plain.edit().putString("tmdb_lang", v).apply()
+
     // ---- Settings ----
     var seasonTemplate: String
         get() = plain.getString("season_tpl", "Season {ss}")!!
         set(v) = plain.edit().putString("season_tpl", v).apply()
     var previewOnly: Boolean
-        get() = plain.getBoolean("preview_only", true)
-        set(v) = plain.edit().putBoolean("preview_only", v).apply()
+        // v2 key: old installs may have "preview_only"=true saved by the old
+        // default, which silently blocked real renames; the new default is off.
+        get() = plain.getBoolean("preview_only_v2", false)
+        set(v) = plain.edit().putBoolean("preview_only_v2", v).apply()
 
     // ---- Sort preference: "name" | "size" | "time", asc true=升序 ----
     var sortKey: String

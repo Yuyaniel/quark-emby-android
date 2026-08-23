@@ -24,13 +24,15 @@
         <item name="colorControlHighlight">@color/ripple</item>
     </style>
 
-    <!-- compact text action inside the selection bar -->
-    <style name="SelectAction">
+    <!-- compact text action inside the top app bar -->
+    <style name="TopAction">
         <item name="android:layout_width">wrap_content</item>
-        <item name="android:layout_height">wrap_content</item>
-        <item name="android:padding">@dimen/space_s</item>
+        <item name="android:layout_height">44dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:paddingStart">@dimen/space_s</item>
+        <item name="android:paddingEnd">@dimen/space_s</item>
         <item name="android:textColor">@color/ink</item>
-        <item name="android:textSize">13sp</item>
+        <item name="android:textSize">14sp</item>
         <item name="android:background">@drawable/ripple_circle</item>
     </style>
 </resources>

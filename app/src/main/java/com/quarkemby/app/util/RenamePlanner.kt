@@ -15,13 +15,16 @@ object RenamePlanner {
     /**
      * @param userSeason season number typed by the user; when set it overrides
      *        whatever season the parser inferred from each file name.
+     * @param epTitles optional TMDB episode titles (episode -> title) merged
+     *        into the name via the {ep_title} placeholder.
      */
     fun build(
         items: List<FileItem>,
         showName: String,
         renameTemplate: String,
         seasonTemplate: String,
-        userSeason: Int? = null
+        userSeason: Int? = null,
+        epTitles: Map<Int, String>? = null
     ): PlanResult {
         val videos = items.filter { it.isVideo }
         val subs = items.filter { it.isSubtitle }
@@ -41,9 +44,11 @@ object RenamePlanner {
             val season = userSeason ?: parsed.season.coerceAtLeast(1)
             seasonsUsed.add(season)
             val baseNoExt = video.name.substringBeforeLast('.')
+            val title = epTitles?.get(parsed.episode)?.let { sanitizeTitle(it) }
             val newBase = applyTemplate(
                 renameTemplate, showName,
-                EpisodeParser.pad(season), EpisodeParser.pad(parsed.episode)
+                EpisodeParser.pad(season), EpisodeParser.pad(parsed.episode),
+                title
             )
             val newName = newBase + video.ext
             val key = "${season}|${newName.lowercase()}"
@@ -104,14 +109,25 @@ object RenamePlanner {
     }
 
     /** Formats a single Emby-style file base name using the user template. */
-    private fun applyTemplate(tpl: String, show: String, ss: String, ee: String): String {
+    private fun applyTemplate(tpl: String, show: String, ss: String, ee: String, epTitle: String? = null): String {
         val mapped = HashMap<String, String>()
         mapped["show_name"] = show
         mapped["ss"] = ss
         mapped["ee"] = ee
+        mapped["ep_title"] = epTitle ?: ""
         var out = tpl
         mapped.forEach { (k, v) -> out = out.replace("{$k}", v) }
+        // drop separator leftovers when the title placeholder was empty
+        out = out.replace(Regex("""[.\s_-]{2,}"""), ".")
+        out = out.trim('.', ' ', '-', '_')
         // sanitize illegal filename chars
         return out.replace(Regex("""[<>:"/\\|?*]"""), "_").trim()
     }
+
+    /** Makes a TMDB episode title safe (and reasonably short) for a filename. */
+    private fun sanitizeTitle(t: String): String =
+        t.replace(Regex("""[<>:"/\\|?*？：]"""), " ")
+            .replace(Regex("""\s{2,}"""), " ")
+            .trim()
+            .take(80)
 }

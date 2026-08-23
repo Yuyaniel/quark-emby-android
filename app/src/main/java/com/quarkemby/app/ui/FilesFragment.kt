@@ -44,7 +44,7 @@ class FilesFragment : Fragment() {
 
     override fun onViewCreated(view: View, s: Bundle?) {
         adapter = FileAdapter(onClick = ::enterItem, onLongClick = ::openMenu)
-        adapter.onSelectionChanged = { count -> updateSelectionBar(count) }
+        adapter.onSelectionChanged = { count -> updateSelectionUi(count) }
         b.fileList.layoutManager = LinearLayoutManager(requireContext())
         b.fileList.adapter = adapter
         // soft vertical gaps between list cards
@@ -59,23 +59,23 @@ class FilesFragment : Fragment() {
             }
         })
 
-        b.backBtn.setOnClickListener { handleBack() }
+        b.backBtn.setOnClickListener { goUp() }
+        b.exitSelBtn.setOnClickListener { adapter.exitSelection() }
         b.refreshBtn.setOnClickListener { load() }
         b.sortBtn.setOnClickListener { showSortDialog() }
-        b.selectBtn.setOnClickListener { toggleSelectionMode() }
-
-        b.selectAllBtn.setOnClickListener { adapter.selectAll() }
-        b.invertBtn.setOnClickListener { adapter.invertSelection() }
-        b.selectMoveBtn.setOnClickListener { showBatchMove() }
-        b.selectDeleteBtn.setOnClickListener { confirmBatchDelete() }
-        b.selectCancelBtn.setOnClickListener { adapter.exitSelection() }
+        b.selectBtn.setOnClickListener {
+            if (adapter.selectionMode) adapter.exitSelection() else adapter.enterSelection()
+        }
+        b.selAllBtn.setOnClickListener { adapter.selectAll() }
+        b.selInvertBtn.setOnClickListener { adapter.invertSelection() }
+        b.selMoveBtn.setOnClickListener { showBatchMove() }
+        b.selDelBtn.setOnClickListener { confirmBatchDelete() }
 
         backCallback = object : OnBackPressedCallback(false) {
             override fun handleOnBackPressed() = handleBack()
         }
         requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner, backCallback)
 
-        // pre-existing path (e.g. from Settings "set as home") wins over saved home
         if (navStack.isEmpty() && Prefs.hasHomeFolder) {
             applyHomeFolder()
         } else {
@@ -87,7 +87,6 @@ class FilesFragment : Fragment() {
     /** Jump into the saved home folder, remembering the way back to root. */
     private fun applyHomeFolder() {
         navStack.clear(); nameStack.clear()
-        // treat the saved home folder as a nested level so back returns to root
         navStack.add("0")
         nameStack.add(Prefs.homeFolderName.ifBlank { "首页目录" })
         currentFid = Prefs.homeFolderFid
@@ -95,16 +94,128 @@ class FilesFragment : Fragment() {
         load()
     }
 
+    // ---------- breadcrumb ----------
+    /**
+     * Renders "根目录 > 影视 > 濑户的花嫁" as clickable segments.
+     * Long paths collapse the middle into an ellipsis. Clicking a segment
+     * jumps directly to that folder.
+     */
     private fun updatePath() {
-        val p = if (nameStack.isEmpty()) "根目录" else nameStack.joinToString(" / ")
-        b.pathText.text = p
+        b.crumbRow.removeAllViews()
+        val segments = mutableListOf<String>()
+        segments.add("根目录")
+        segments.addAll(nameStack)
+        // collapse middle levels when the path gets long
+        val display: List<Pair<String, Int>> =
+            if (segments.size > 4) {
+                val keep = listOf(0, 1, segments.size - 2, segments.size - 1)
+                val out = mutableListOf<Pair<String, Int>>()
+                var last = -2
+                keep.forEach { i ->
+                    if (i - last > 1) out.add("…" to -1)
+                    out.add(segments[i] to i)
+                    last = i
+                }
+                out
+            } else {
+                segments.mapIndexed { i, t -> t to i }
+            }
+
+        display.forEachIndexed { di, (label, segIdx) ->
+            if (di > 0) b.crumbRow.addView(separator())
+            val isLast = di == display.size - 1
+            b.crumbRow.addView(crumbLabel(label, segIdx, isLast))
+        }
+        // auto-scroll to the newest (right-most) segment
+        b.crumbScroll.post { b.crumbScroll.fullScroll(View.FOCUS_RIGHT) }
+
         val canGoUp = navStack.isNotEmpty()
         b.backBtn.visibility = if (canGoUp) View.VISIBLE else View.GONE
         if (::backCallback.isInitialized) backCallback.isEnabled = canGoUp || adapter.selectionMode
     }
 
+    private fun separator(): TextView = TextView(requireContext()).apply {
+        text = "›"
+        textSize = 15f
+        // lowered opacity per spec
+        setTextColor(
+            androidx.core.graphics.ColorUtils.setAlphaComponent(
+                ContextCompat.getColor(requireContext(), R.color.ink), 0x88
+            )
+        )
+        setPadding(Ui.dp(requireContext(), 2), 0, Ui.dp(requireContext(), 2), 0)
+    }
+
+    private fun crumbLabel(label: String, segIdx: Int, isLast: Boolean): TextView =
+        TextView(requireContext()).apply {
+            text = label
+            textSize = if (isLast) 17f else 15f
+            typeface = if (isLast) android.graphics.Typeface.DEFAULT_BOLD else null
+            maxLines = 1
+            ellipsize = if (isLast) android.text.TextUtils.TruncateAt.MIDDLE else null
+            maxWidth = Ui.dp(requireContext(), 180)
+            setTextColor(
+                ContextCompat.getColor(
+                    requireContext(),
+                    if (isLast) R.color.ink else R.color.muted
+                )
+            )
+            setPadding(Ui.dp(requireContext(), 6), Ui.dp(requireContext(), 10), Ui.dp(requireContext(), 6), Ui.dp(requireContext(), 10))
+            background = ContextCompat.getDrawable(requireContext(), R.drawable.ripple_fg)
+            isClickable = true
+            setOnClickListener {
+                if (segIdx == -1) return@setOnClickListener
+                jumpToSegment(segIdx)
+            }
+        }
+
+    /**
+     * Jump to the folder represented by breadcrumb segment index.
+     * 0 = root; k>=1 maps to nameStack[k-1].
+     */
+    private fun jumpToSegment(segIdx: Int) {
+        if (segIdx == 0) {
+            if (currentFid.isBlank() && navStack.isEmpty()) return
+            navStack.clear(); nameStack.clear(); currentFid = ""
+        } else {
+            val j = segIdx - 1
+            if (j >= nameStack.size - 1) return // already there
+            val targetFid = if (j == nameStack.size - 1) currentFid else navStack[j + 1]
+            while (nameStack.size > j + 1) {
+                nameStack.removeAt(nameStack.size - 1)
+                navStack.removeAt(navStack.size - 1)
+            }
+            currentFid = targetFid
+        }
+        adapter.exitSelection()
+        updatePath()
+        load()
+    }
+
+    // ---------- selection toolbar ----------
+    private fun updateSelectionUi(count: Int) {
+        val selecting = adapter.selectionMode
+        b.crumbScroll.visibility = if (selecting) View.GONE else View.VISIBLE
+        b.backBtn.visibility = if (!selecting && navStack.isNotEmpty()) View.VISIBLE else View.GONE
+        b.exitSelBtn.visibility = if (selecting) View.VISIBLE else View.GONE
+        b.selCountText.visibility = if (selecting) View.VISIBLE else View.GONE
+        b.selCountText.text = "已选中 $count 项"
+
+        b.sortBtn.visibility = if (selecting) View.GONE else View.VISIBLE
+        b.selectBtn.visibility = if (selecting) View.GONE else View.VISIBLE
+        b.refreshBtn.visibility = if (selecting) View.GONE else View.VISIBLE
+
+        b.selAllBtn.visibility = if (selecting) View.VISIBLE else View.GONE
+        b.selInvertBtn.visibility = if (selecting) View.VISIBLE else View.GONE
+        b.selMoveBtn.visibility = if (selecting) View.VISIBLE else View.GONE
+        b.selDelBtn.visibility = if (selecting) View.VISIBLE else View.GONE
+
+        if (::backCallback.isInitialized) {
+            backCallback.isEnabled = selecting || navStack.isNotEmpty()
+        }
+    }
+
     private fun handleBack() {
-        // selection mode takes priority: first tap closes selection, not navigate up
         if (adapter.selectionMode || adapter.selectedCount > 0) {
             adapter.exitSelection()
             return
@@ -139,15 +250,13 @@ class FilesFragment : Fragment() {
         val (folders, files) = items.partition { it.isFolder }
         val key = Prefs.sortKey
         val asc = Prefs.sortAsc
-        // natural (ascending) comparator; direction applied by caller
         fun cmp(a: FileItem, b: FileItem): Int = when (key) {
             "size" -> a.size.compareTo(b.size)
             "time" -> a.updatedAt.compareTo(b.updatedAt)
-            else -> a.name.lowercase().compareTo(b.name.lowercase()) // name
+            else -> a.name.lowercase().compareTo(b.name.lowercase())
         }
         val dir = if (asc) 1 else -1
-        fun sortGroup(g: List<FileItem>) =
-            g.sortedWith(Comparator { a, b -> cmp(a, b) * dir })
+        fun sortGroup(g: List<FileItem>) = g.sortedWith(Comparator { a, b -> cmp(a, b) * dir })
         return sortGroup(folders) + sortGroup(files)
     }
 
@@ -177,20 +286,7 @@ class FilesFragment : Fragment() {
             .show()
     }
 
-    // ---------- selection ----------
-    private fun toggleSelectionMode() {
-        if (adapter.selectionMode) adapter.exitSelection() else adapter.enterSelection()
-    }
-
-    private fun updateSelectionBar(count: Int) {
-        if (adapter.selectionMode) {
-            b.selectBar.visibility = View.VISIBLE
-            b.selectCount.text = "已选 $count 项"
-        } else {
-            b.selectBar.visibility = View.GONE
-        }
-    }
-
+    // ---------- batch actions ----------
     private fun confirmBatchDelete() {
         val fids = adapter.selectedFids
         if (fids.isEmpty()) { toast("未选择文件"); return }
@@ -214,7 +310,6 @@ class FilesFragment : Fragment() {
     private fun showBatchMove() {
         val fids = adapter.selectedFids
         if (fids.isEmpty()) { toast("未选择文件"); return }
-        // reuse the single-item move picker with the full selected list
         showMovePicker("移动到 · 选中 ${fids.size} 项") { dst ->
             lifecycleScope.launch {
                 try {
@@ -229,8 +324,6 @@ class FilesFragment : Fragment() {
 
     // ---------- navigation ----------
     private fun enterItem(item: FileItem) {
-        // when in selection mode the adapter intercepts taps, so folder-entry
-        // is only reachable in normal mode.
         if (!item.isFolder) { toast("文件：${item.name}"); return }
         navStack.add(currentFid)
         nameStack.add(item.name)

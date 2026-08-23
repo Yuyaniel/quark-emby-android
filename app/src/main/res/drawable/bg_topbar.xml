@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- one step lighter than page bg, with a hairline bottom divider -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/surface_container" />
+        </shape>
+    </item>
+    <item android:gravity="bottom" android:height="1dp">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/outline_variant" />
+        </shape>
+    </item>
+</layer-list>

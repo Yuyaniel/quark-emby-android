@@ -12,9 +12,12 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import com.quarkemby.app.MainActivity
 import com.quarkemby.app.R
 import com.quarkemby.app.data.Prefs
+import com.quarkemby.app.data.TmdbApi
+import kotlinx.coroutines.launch
 
 /**
  * Settings screen: season-folder template, debug (preview-only) toggle,
@@ -49,6 +52,26 @@ class SettingsFragment : Fragment() {
         root.addView(title)
         root.addView(hint("整理规则与应用行为配置，全部保存在本机。"))
 
+        // ---- TMDB (optional episode titles + posters) ----
+        root.addView(section("TMDB API Key（可选）"))
+        root.addView(hint("填写后可在批量重命名时追加剧集标题，如“九门.S01E01.标题.mp4”。"))
+        val keyInput = field().apply { hint = "TMDB v3 API Key"; setText(Prefs.tmdbKey) }
+        root.addView(keyInput); root.addView(spacer())
+        root.addView(secondary("测试 TMDB Key") {
+            val key = keyInput.text.toString().trim()
+            if (key.isEmpty()) { toast("请先填入 Key"); return@secondary }
+            lifecycleScope.launch {
+                val ok = TmdbApi.testKey(key)
+                toast(if (ok) "✓ Key 有效" else "✗ Key 无效或网络失败")
+                if (ok) Prefs.tmdbKey = key
+            }
+        })
+        root.addView(spacer())
+
+        root.addView(section("TMDB 语言"))
+        val langInput = field().apply { hint = "zh-CN / en-US"; setText(Prefs.tmdbLanguage) }
+        root.addView(langInput); root.addView(spacer())
+
         // ---- Templates ----
         root.addView(section("Season 文件夹模板"))
         root.addView(hint("可用占位符：{ss} 季号（两位补零）"))
@@ -57,7 +80,7 @@ class SettingsFragment : Fragment() {
 
         root.addView(section("文件命名规则"))
         root.addView(hint("批量重命名时输入季号：剧名.S01E01.mp4"))
-        root.addView(hint("季号留空：剧名.01.mp4"))
+        root.addView(hint("季号留空：剧名.01.mp4；TMDB 可追加剧集标题"))
 
         val previewBox = CheckBox(requireContext()).apply {
             text = "调试模式：仅预览，不写入网盘"
@@ -83,6 +106,8 @@ class SettingsFragment : Fragment() {
 
         // ---- Actions ----
         root.addView(primary("保存设置") {
+            Prefs.tmdbKey = keyInput.text.toString().trim()
+            Prefs.tmdbLanguage = langInput.text.toString().trim().ifEmpty { "zh-CN" }
             Prefs.seasonTemplate = seasonInput.text.toString().trim().ifEmpty { "Season {ss}" }
             Prefs.previewOnly = previewBox.isChecked
             toast("设置已保存")

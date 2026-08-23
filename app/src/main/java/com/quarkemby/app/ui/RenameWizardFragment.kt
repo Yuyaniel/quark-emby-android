@@ -13,30 +13,37 @@ import android.view.Window
 import android.view.WindowManager
 import android.widget.CheckBox
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.DialogFragment
 import androidx.lifecycle.lifecycleScope
 import com.quarkemby.app.R
 import com.quarkemby.app.data.Prefs
 import com.quarkemby.app.data.QuarkApi
+import com.quarkemby.app.data.TmdbApi
 import com.quarkemby.app.data.models.FileItem
 import com.quarkemby.app.data.models.JobLogEntry
-import com.quarkemby.app.data.models.RenameAction
 import com.quarkemby.app.util.EpisodeParser
 import com.quarkemby.app.util.RenamePlanner
+import com.quarkemby.app.util.ShowNames
 import kotlinx.coroutines.launch
 
 /**
- * Core batch-renaming wizard, shown as a truly centered dialog.
- * Steps: input show name + season -> preview (old -> new, per-file checkboxes
- * + conflict detection) -> execute -> result. All episode numbers are parsed
- * locally; no online metadata service is used.
+ * Batch-renaming wizard, shown as a truly centered dialog.
+ * Step 1: show name (auto-cleaned) + optional season number.
+ * Step 2 (optional): TMDB search with posters; episode titles enrich the names.
+ * Step 3: preview (old -> new, per-file checkboxes + conflict detection).
+ * Step 4: execute. Step 5: result.
  *
- * Naming: season filled -> "剧名.S01E01.ext"; empty -> "剧名.01.ext".
+ * Naming examples:
+ *   season + tmdb : 九门.S01E01.百人部队深夜离奇失踪.mp4
+ *   season only   : 九门.S01E01.mp4
+ *   no season     : 九门.01.mp4
  */
 class RenameWizardFragment : DialogFragment() {
 
@@ -47,6 +54,8 @@ class RenameWizardFragment : DialogFragment() {
 
     private var items: List<FileItem> = emptyList()
     private var plan: RenamePlanner.PlanResult? = null
+    private var tmdbResults: List<TmdbApi.Show> = emptyList()
+    private var selectedShow: TmdbApi.Show? = null
 
     private lateinit var root: LinearLayout
     private var scroll: ScrollView? = null
@@ -55,9 +64,9 @@ class RenameWizardFragment : DialogFragment() {
         private const val ARG_FID = "fid"
         private const val ARG_NAME = "name"
 
-        /** template used when the user typed a season number */
+        private const val TPL_SEASON_TITLE = "{show_name}.S{ss}E{ee}.{ep_title}"
+        private const val TPL_EP_TITLE = "{show_name}.{ee}.{ep_title}"
         private const val TPL_WITH_SEASON = "{show_name}.S{ss}E{ee}"
-        /** template used when the season field is left empty */
         private const val TPL_NO_SEASON = "{show_name}.{ee}"
 
         fun newInstance(folder: FileItem) = RenameWizardFragment().apply {
@@ -88,8 +97,7 @@ class RenameWizardFragment : DialogFragment() {
         super.onStart()
         val w = dialog?.window
         w?.let {
-            // wrap-content + center gravity so the dialog hugs its content and
-            // floats exactly mid-screen instead of hugging the top
+            // wrap-content + center gravity so the dialog floats exactly mid-screen
             it.setGravity(Gravity.CENTER)
             val lp = WindowManager.LayoutParams().apply {
                 copyFrom(it.attributes)
@@ -146,8 +154,8 @@ class RenameWizardFragment : DialogFragment() {
         root.addView(stepHeader("第 1 步 · 剧集名称与季号"))
         val nameInput = EditText(requireContext()).apply {
             hint = "剧集名称"; setSingleLine(true)
-            // auto-fill with the folder name so the user can rename a whole folder quickly
-            setText(folder.name)
+            // auto-fill with the cleaned folder name ("九门(2026)" -> "九门")
+            setText(ShowNames.clean(folder.name))
         }
         val seasonInput = EditText(requireContext()).apply {
             hint = "第几季（可选，如 1）"
@@ -157,49 +165,186 @@ class RenameWizardFragment : DialogFragment() {
         root.addView(nameInput); root.addView(spacer())
         root.addView(seasonInput); root.addView(spacer())
         root.addView(TextView(requireContext()).apply {
-            text = "填季号：九门.S01E01.mp4 ／ 留空：九门.01.mp4"
+            text = "留空季号：九门.01.mp4 ／ 填 1：九门.S01E01.mp4\nTMDB 可追加剧集标题：九门.S01E01.标题.mp4"
             textSize = 12f
             setTextColor(resources.getColor(R.color.muted, null))
             setPadding(4, 0, 4, 4)
         })
 
-        root.addView(button("整理重命名(本地解析)") {
+        root.addView(button("🔍 TMDB 搜索（带封面 · 含剧集标题）") {
             val name = nameInput.text.toString().trim()
             if (name.isEmpty()) { toast("请输入剧集名称"); return@button }
-            val season = seasonInput.text.toString().trim().toIntOrNull()?.takeIf { it in 1..99 }
-            if (seasonInput.text.toString().trim().isNotEmpty() && season == null) {
-                toast("季号请填 1-99 的数字，或留空")
-                return@button
-            }
-            buildAndPreview(name, season)
+            val season = readSeason(seasonInput) ?: return@button
+            searchTmdb(name, season)
+        })
+        root.addView(buttonSub("整理重命名(本地解析)") {
+            val name = nameInput.text.toString().trim()
+            if (name.isEmpty()) { toast("请输入剧集名称"); return@buttonSub }
+            val season = readSeason(seasonInput) ?: return@buttonSub
+            buildAndPreview(name, season, null)
         })
         root.addView(buttonSub("取消") { dismiss() })
     }
 
-    // ---------- Step 2 ----------
-    private fun buildAndPreview(showName: String, userSeason: Int?) {
+    private fun readSeason(input: EditText): Int? {
+        val raw = input.text.toString().trim()
+        if (raw.isEmpty()) return null
+        val v = raw.toIntOrNull()?.takeIf { it in 1..99 }
+        if (v == null) toast("季号请填 1-99 的数字，或留空")
+        return v
+    }
+
+    // ---------- Step 2: TMDB results with posters ----------
+    private fun searchTmdb(name: String, season: Int?) {
+        val key = Prefs.tmdbKey
+        if (key.isBlank()) {
+            toast("请先在「设置」中填写 TMDB API Key，或使用本地解析")
+            return
+        }
+        lifecycleScope.launch {
+            root.removeAllViews(); renderTitle()
+            root.addView(stepHeader("正在搜索 TMDB …"))
+            try {
+                tmdbResults = TmdbApi.searchTv(key, name, Prefs.tmdbLanguage)
+                selectedShow = null
+                renderStep2(name, season)
+            } catch (e: Exception) {
+                root.addView(TextView(requireContext()).apply {
+                    text = e.message ?: "TMDB 搜索失败"; textSize = 14f
+                    setTextColor(resources.getColor(R.color.danger, null)); setPadding(0, 8, 0, 8)
+                })
+                root.addView(buttonSub("整理重命名(本地解析)") { buildAndPreview(name, season, null) })
+                root.addView(buttonSub("返回") { renderStep1() })
+            }
+        }
+    }
+
+    private fun renderStep2(queryName: String, season: Int?) {
+        root.removeAllViews(); renderTitle()
+        root.addView(stepHeader("第 2 步 · 选择匹配结果（点击封面确认）"))
+        if (tmdbResults.isEmpty()) {
+            root.addView(TextView(requireContext()).apply {
+                text = "没有找到匹配结果，可直接使用本地解析整理。"
+                textSize = 13f; setTextColor(resources.getColor(R.color.muted, null)); setPadding(0, 8, 0, 8)
+            })
+        }
+        tmdbResults.forEach { show ->
+            val row = LinearLayout(requireContext()).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(8, 10, 8, 10)
+                isClickable = true
+                foreground = ContextCompat.getDrawable(requireContext(), R.drawable.ripple_fg)
+                background = GradientDrawable().apply {
+                    cornerRadius = Ui.dp(requireContext(), 12).toFloat()
+                    setColor(
+                        ContextCompat.getColor(
+                            requireContext(),
+                            if (selectedShow?.id == show.id) R.color.primary_container
+                            else R.color.surface_container_high
+                        )
+                    )
+                }
+                setOnClickListener {
+                    selectedShow = show
+                    renderStep2(queryName, season)
+                }
+            }
+            // poster thumbnail for visual confirmation
+            val poster = ImageView(requireContext()).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    Ui.dp(requireContext(), 54), Ui.dp(requireContext(), 81)
+                ).apply { marginEnd = Ui.dp(requireContext(), 12) }
+                scaleType = ImageView.ScaleType.CENTER_CROP
+            }
+            Img.load(show.posterUrl, poster)
+            row.addView(poster)
+
+            val col = LinearLayout(requireContext()).apply {
+                orientation = LinearLayout.VERTICAL
+            }
+            col.addView(TextView(requireContext()).apply {
+                text = "${show.name}（${show.firstAirYear.ifEmpty { "未知年份" }}）"
+                textSize = 15f; setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+                setTextColor(resources.getColor(R.color.ink, null))
+            })
+            col.addView(TextView(requireContext()).apply {
+                text = "TMDB ID: ${show.id}"
+                textSize = 11f; setTextColor(resources.getColor(R.color.muted, null))
+            })
+            row.addView(col, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(TextView(requireContext()).apply {
+                text = if (selectedShow?.id == show.id) "◉" else "○"
+                textSize = 16f
+                setPadding(Ui.dp(requireContext(), 8), 0, 4, 0)
+                setTextColor(resources.getColor(R.color.brand_primary, null))
+            })
+            root.addView(row, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(0, Ui.dp(requireContext(), 6), 0, Ui.dp(requireContext(), 6)) })
+        }
+        root.addView(spacer())
+        val chosen = selectedShow
+        if (chosen != null) {
+            root.addView(button("使用所选剧集 · 继续（含剧集标题）") {
+                buildAndPreview(chosen.name, season, chosen)
+            })
+        }
+        root.addView(buttonSub("跳过 TMDB · 整理重命名(本地解析)") {
+            buildAndPreview(queryName, season, null)
+        })
+        root.addView(buttonSub("返回上一步") { renderStep1() })
+    }
+
+    // ---------- Step 3: plan + preview ----------
+    private fun buildAndPreview(showName: String, userSeason: Int?, show: TmdbApi.Show?) {
         lifecycleScope.launch {
             val clean = showName.trim()
             if (clean.isEmpty()) { toast("剧集名称不能为空"); return@launch }
             root.removeAllViews(); renderTitle()
             root.addView(stepHeader("加载文件并生成变更预览 …"))
-            if (items.isEmpty()) items = runCatching { QuarkApi.list(folder.fid) }.getOrDefault(emptyList())
-            val tpl = if (userSeason != null) TPL_WITH_SEASON else TPL_NO_SEASON
-            plan = RenamePlanner.build(items, clean, tpl, Prefs.seasonTemplate, userSeason)
-            renderStep2(clean)
+            if (items.isEmpty()) {
+                items = runCatching { QuarkApi.list(folder.fid) }.getOrDefault(emptyList())
+            }
+            if (items.none { it.isVideo || it.isSubtitle }) {
+                root.addView(TextView(requireContext()).apply {
+                    text = "读取不到视频/字幕文件，请检查网络或 Cookie 后重试。"
+                    textSize = 13f; setTextColor(resources.getColor(R.color.danger, null)); setPadding(0, 8, 0, 8)
+                })
+                root.addView(buttonSub("返回") { renderStep1() })
+                return@launch
+            }
+
+            // optional TMDB episode titles for the target season
+            var epTitles: Map<Int, String>? = null
+            if (show != null && Prefs.tmdbKey.isNotBlank()) {
+                epTitles = runCatching {
+                    TmdbApi.seasonEpisodes(
+                        Prefs.tmdbKey, show.id, userSeason ?: 1, Prefs.tmdbLanguage
+                    )
+                }.getOrNull()
+            }
+            val hasTitles = !epTitles.isNullOrEmpty()
+            val tpl = when {
+                hasTitles && userSeason != null -> TPL_SEASON_TITLE
+                hasTitles -> TPL_EP_TITLE
+                userSeason != null -> TPL_WITH_SEASON
+                else -> TPL_NO_SEASON
+            }
+            plan = RenamePlanner.build(items, clean, tpl, Prefs.seasonTemplate, userSeason, epTitles)
+            renderStep3(clean)
         }
     }
 
-    private fun renderStep2(showName: String) {
+    private fun renderStep3(showName: String) {
         root.removeAllViews(); renderTitle()
         val p = plan!!
         val actionable = p.actions.indices.filter { p.actions[it].error.isEmpty() }
         // default-check every actionable item so user can deselect individual rows
         val checked = linkedSetOf<Int>().apply { addAll(actionable) }
 
-        root.addView(stepHeader("第 2 步 · 预览重命名（勾选要执行的项目）"))
+        root.addView(stepHeader("第 3 步 · 预览重命名（勾选要执行的项目）"))
 
-        // summary: stats
         val conflictIdx = p.actions.indices.filter { p.actions[it].error.isNotEmpty() }
         root.addView(TextView(requireContext()).apply {
             text = "共 ${p.actions.size} 项，可执行 ${actionable.size} 项" +
@@ -227,7 +372,7 @@ class RenameWizardFragment : DialogFragment() {
                 layoutParams = lp
             }
             val cb = CheckBox(requireContext()).apply {
-                isChecked = if (a.error.isEmpty()) true else false
+                isChecked = a.error.isEmpty()
                 isEnabled = a.error.isEmpty()
                 setOnCheckedChangeListener { _, isCc -> if (isCc) checked.add(idx) else checked.remove(idx) }
             }
@@ -262,7 +407,6 @@ class RenameWizardFragment : DialogFragment() {
             root.addView(buttonSub("✅ 调试模式 · 仅预览（不会写网盘）") { finishDemo(p) })
         } else {
             root.addView(button("🚀 重命名勾选的项目") {
-                // apply on check state captured at render time; fallback = all actionable
                 val chosen = if (checked.isNotEmpty()) checked else actionable.toSet()
                 execute(p, chosen)
             })
@@ -271,10 +415,10 @@ class RenameWizardFragment : DialogFragment() {
         root.addView(buttonSub("取消") { dismiss() })
     }
 
-    // ---------- Step 3: execute ----------
+    // ---------- Step 4: execute ----------
     private fun execute(p: RenamePlanner.PlanResult, chosen: Set<Int>) {
         root.removeAllViews(); renderTitle()
-        root.addView(stepHeader("第 3 步 · 执行中 …"))
+        root.addView(stepHeader("第 4 步 · 执行中 …"))
         val bar = ProgressBar(requireContext(), null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100; progress = 0
         }
@@ -289,13 +433,11 @@ class RenameWizardFragment : DialogFragment() {
             val existingFolders = runCatching { QuarkApi.list(folder.fid) }
                 .getOrDefault(emptyList()).filter { it.isFolder }.associateBy { it.name }
             val seasonFids = HashMap<String, String>()
-            // only season folders actually used by chosen actions
             val usedActions = chosen.map { p.actions[it] }.filter { it.error.isEmpty() }
             val usedFolders = usedActions.map { it.seasonIdx }.distinct()
             val total = (usedActions.size + usedFolders.size).coerceAtLeast(1)
             var done = 0
 
-            // 1) create Season folders
             usedFolders.forEach { si ->
                 val fname = Prefs.seasonTemplate.replace("{ss}", EpisodeParser.pad(si + 1))
                 status.text = "创建文件夹 $fname …"
@@ -307,7 +449,6 @@ class RenameWizardFragment : DialogFragment() {
                 done++; bar.progress = done * 100 / total
             }
 
-            // 2) rename + move each chosen action
             val success = mutableListOf<String>()
             val failed = mutableListOf<Pair<String, String>>()
             usedActions.forEach { a ->
@@ -324,12 +465,12 @@ class RenameWizardFragment : DialogFragment() {
                 }
                 done++; bar.progress = done * 100 / total
             }
-            writeLog(p, success, failed)
-            renderStep3(success, failed, p)
+            writeLog(success, failed)
+            renderStep4(success, failed)
         }
     }
 
-    private fun writeLog(p: RenamePlanner.PlanResult, success: List<String>, failed: List<Pair<String, String>>) {
+    private fun writeLog(success: List<String>, failed: List<Pair<String, String>>) {
         val detail = buildString {
             success.forEach { append("✓ ").append(it).append('\n') }
             failed.forEach { append("✗ ").append(it.first).append("：").append(it.second).append('\n') }
@@ -345,17 +486,15 @@ class RenameWizardFragment : DialogFragment() {
     }
 
     private fun finishDemo(p: RenamePlanner.PlanResult) {
-        writeLog(p, p.actions.filter { it.error.isEmpty() }.map { it.newName }, emptyList())
-        renderStep3(
-            p.actions.filter { it.error.isEmpty() }.map { it.newName },
-            emptyList(), p
-        )
+        val ok = p.actions.filter { it.error.isEmpty() }.map { it.newName }
+        writeLog(ok, emptyList())
+        renderStep4(ok, emptyList())
     }
 
-    // ---------- Step 4 ----------
-    private fun renderStep3(success: List<String>, failed: List<Pair<String, String>>, p: RenamePlanner.PlanResult) {
+    // ---------- Step 5 ----------
+    private fun renderStep4(success: List<String>, failed: List<Pair<String, String>>) {
         root.removeAllViews(); renderTitle()
-        root.addView(stepHeader("第 4 步 · 完成"))
+        root.addView(stepHeader("第 5 步 · 完成"))
         root.addView(TextView(requireContext()).apply {
             text = if (Prefs.previewOnly) {
                 "✅ 调试模式：仅预览，未写入网盘"

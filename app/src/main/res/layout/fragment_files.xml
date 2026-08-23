@@ -5,125 +5,134 @@
     android:orientation="vertical"
     android:background="@color/bg">
 
-    <!-- M3 top bar -->
+    <!-- M3 top app bar (64dp) -->
     <LinearLayout
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
-        android:layout_height="56dp"
+        android:layout_height="64dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingHorizontal="@dimen/space_s"
-        android:background="@drawable/bg_header"
-        android:elevation="2dp">
+        android:paddingStart="@dimen/space_xs"
+        android:paddingEnd="@dimen/space_s"
+        android:background="@drawable/bg_topbar"
+        android:elevation="3dp">
 
+        <!-- back to parent (hidden at root) -->
         <TextView
             android:id="@+id/back_btn"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:gravity="center"
-            android:text="‹"
+            android:text="←"
             android:textColor="@color/ink"
-            android:textSize="24sp"
+            android:textSize="22sp"
             android:background="@drawable/ripple_circle"
             android:visibility="gone" />
 
+        <!-- exit selection mode -->
         <TextView
-            android:id="@+id/path_text"
+            android:id="@+id/exit_sel_btn"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:gravity="center"
+            android:text="✕"
+            android:textColor="@color/ink"
+            android:textSize="18sp"
+            android:background="@drawable/ripple_circle"
+            android:visibility="gone" />
+
+        <!-- breadcrumb path (clickable segments) -->
+        <HorizontalScrollView
+            android:id="@+id/crumb_scroll"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginStart="2dp"
+            android:scrollbars="none"
+            android:overScrollMode="never"
+            android:fillViewport="true">
+
+            <LinearLayout
+                android:id="@+id/crumb_row"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:orientation="horizontal"
+                android:gravity="center_vertical" />
+        </HorizontalScrollView>
+
+        <!-- selection-mode count title -->
+        <TextView
+            android:id="@+id/sel_count_text"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:layout_marginStart="@dimen/space_xs"
-            android:text="根目录"
+            android:layout_marginStart="6dp"
+            android:text="已选中 0 项"
             android:textColor="@color/ink"
-            android:textSize="16sp"
+            android:textSize="17sp"
             android:textStyle="bold"
-            android:maxLines="1"
-            android:ellipsize="middle" />
+            android:visibility="gone" />
 
+        <!-- normal-mode actions -->
         <TextView
             android:id="@+id/sort_btn"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_marginStart="@dimen/space_s"
             android:gravity="center"
             android:text="⇅"
             android:textColor="@color/ink"
             android:textSize="17sp"
-            android:background="@drawable/ripple_circle" />
+            android:background="@drawable/ripple_circle"
+            android:contentDescription="排序" />
 
         <TextView
             android:id="@+id/select_btn"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:gravity="center"
             android:text="☑"
             android:textColor="@color/ink"
             android:textSize="17sp"
-            android:background="@drawable/ripple_circle" />
+            android:background="@drawable/ripple_circle"
+            android:contentDescription="多选" />
 
         <TextView
             android:id="@+id/refresh_btn"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:gravity="center"
             android:text="⟳"
             android:textColor="@color/ink"
             android:textSize="18sp"
-            android:background="@drawable/ripple_circle" />
-    </LinearLayout>
+            android:background="@drawable/ripple_circle"
+            android:contentDescription="刷新" />
 
-    <!-- selection action bar -->
-    <LinearLayout
-        android:id="@+id/select_bar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:paddingHorizontal="@dimen/space_m"
-        android:paddingVertical="@dimen/space_xs"
-        android:background="@color/surface_container_high"
-        android:elevation="1dp"
-        android:visibility="gone">
+        <!-- selection-mode actions (replace sort/select/refresh) -->
+        <TextView
+            android:id="@+id/sel_all_btn"
+            style="@style/TopAction"
+            android:text="全选"
+            android:visibility="gone" />
 
         <TextView
-            android:id="@+id/select_count"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="已选 0 项"
-            android:textColor="@color/brand_primary"
-            android:textSize="13sp"
-            android:textStyle="bold" />
+            android:id="@+id/sel_invert_btn"
+            style="@style/TopAction"
+            android:text="反选"
+            android:visibility="gone" />
 
         <TextView
-            android:id="@+id/select_all_btn"
-            style="@style/SelectAction"
-            android:text="全选" />
+            android:id="@+id/sel_move_btn"
+            style="@style/TopAction"
+            android:text="移动"
+            android:visibility="gone" />
 
         <TextView
-            android:id="@+id/invert_btn"
-            style="@style/SelectAction"
-            android:text="反选" />
-
-        <TextView
-            android:id="@+id/select_move_btn"
-            style="@style/SelectAction"
-            android:text="移动" />
-
-        <TextView
-            android:id="@+id/select_delete_btn"
-            style="@style/SelectAction"
+            android:id="@+id/sel_del_btn"
+            style="@style/TopAction"
             android:text="删除"
-            android:textColor="@color/danger" />
-
-        <TextView
-            android:id="@+id/select_cancel_btn"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:padding="@dimen/space_s"
-            android:text="✕"
-            android:textColor="@color/muted"
-            android:textSize="16sp"
-            android:background="@drawable/ripple_circle" />
+            android:textColor="@color/danger"
+            android:visibility="gone" />
     </LinearLayout>
 
     <FrameLayout
