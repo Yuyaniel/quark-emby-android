@@ -32,32 +32,42 @@ jobs:
       - name: 设置 Gradle（含缓存）
         uses: gradle/actions/setup-gradle@v4
 
+      - name: 读取版本号
+        run: |
+          VERSION=$(sed -n 's/.*versionName "\([^"]*\)".*/\1/p' app/build.gradle | head -1)
+          echo "version=$VERSION" >> "$GITHUB_ENV"
+          echo "版本号: $VERSION"
+
       - name: 构建 APK
         run: |
           chmod +x gradlew
           TYPE=$(echo "${{ inputs.build_type }}" | sed 's/^\(.\)/\U\1/')
           ./gradlew "assemble$TYPE" --stacktrace
 
-      # release 没有配置签名，产物是 app-release-unsigned.apk 无法安装；
-      # 用一次性生成的调试密钥现场签名，保证两种类型都能直接装
-      - name: 签名 release APK（调试密钥）
+      # CI 环境没有 keystore.properties，release 产物为 app-release-unsigned.apk；
+      # 用一次性生成的临时密钥现场签名，保证测试版可直接安装。
+      # 注意：临时签名与本地正式签名不同，不能覆盖升级正式版。
+      - name: 签名 release APK（临时密钥）
         if: inputs.build_type == 'release'
         run: |
-          keytool -genkeypair -keystore debug.keystore -alias androiddebugkey \
-            -storepass android -keypass android -validity 9999 \
-            -dname "CN=Android Debug,O=Android,C=US"
+          keytool -genkeypair -keystore ci.keystore -alias cikey \
+            -keyalg RSA -keysize 2048 -validity 9999 \
+            -storepass cipass -keypass cipass \
+            -dname "CN=Ordify CI,O=Ordify,C=CN"
           BUILD_TOOLS=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)
           BT="$ANDROID_HOME/build-tools/$BUILD_TOOLS"
-          "$BT/zipalign" -f 4 app/build/outputs/apk/release/app-release-unsigned.apk aligned.apk
-          "$BT/apksigner" sign --ks debug.keystore --ks-pass pass:android \
-            --key-pass pass:android --out signed.apk aligned.apk
+          SRC="app/build/outputs/apk/release/app-release-unsigned.apk"
+          [ -f "$SRC" ] || SRC="app/build/outputs/apk/release/app-release.apk"
+          "$BT/zipalign" -f 4 "$SRC" aligned.apk
+          "$BT/apksigner" sign --ks ci.keystore --ks-pass pass:cipass \
+            --key-pass pass:cipass --out signed.apk aligned.apk
           mv signed.apk app/build/outputs/apk/release/app-release.apk
 
-      - name: 重命名 APK（附提交号）
+      - name: 重命名 APK（应用名 + 版本 + 提交号）
         run: |
           TYPE="${{ inputs.build_type }}"
           SRC="app/build/outputs/apk/${TYPE}/app-${TYPE}.apk"
-          DST="quark-emby-v1.0-${GITHUB_SHA::7}-${TYPE}.apk"
+          DST="Ordify-v${{ env.version }}-${GITHUB_SHA::7}-${TYPE}.apk"
           mv "$SRC" "$DST"
           echo "apk_name=$DST" >> "$GITHUB_ENV"
           ls -lh "$DST"
@@ -68,3 +78,14 @@ jobs:
           name: ${{ env.apk_name }}
           path: ${{ env.apk_name }}
           retention-days: 30
+
+      - name: 构建摘要
+        run: |
+          {
+            echo "## 构建完成"
+            echo ""
+            echo "- 类型：\`${{ inputs.build_type }}\`"
+            echo "- 版本：\`v${{ env.version }}\`"
+            echo "- 提交：\`${GITHUB_SHA::7}\`"
+            echo "- 产物：\`${{ env.apk_name }}\`（页面底部 Artifacts 下载，保留 30 天）"
+          } >> "$GITHUB_STEP_SUMMARY"
