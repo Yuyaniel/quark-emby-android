@@ -1,4 +1,5 @@
-# 重命名弹窗 · 输入框（深色背景 + 低饱和度强调色边框）
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 重命名弹窗输入框：深色背景 + 低饱和度强调色边框 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <solid android:color="#1B1F26" />
