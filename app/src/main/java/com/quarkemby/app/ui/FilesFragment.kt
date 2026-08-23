@@ -36,6 +36,10 @@ class FilesFragment : Fragment() {
     private val nameStack = mutableListOf<String>()     // names
     private var currentFid = ""                          // "" = root
     private var loadedItems: List<FileItem> = emptyList()
+    /** Home-folder jump must happen ONCE per fragment instance. Without this
+     *  flag every view recreation (returning from Settings/Log) re-applied
+     *  the jump and the user was yanked off the root directory. */
+    private var initialNavDone = false
 
     private lateinit var backCallback: OnBackPressedCallback
 
@@ -75,7 +79,8 @@ class FilesFragment : Fragment() {
         }
         requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner, backCallback)
 
-        if (navStack.isEmpty() && Prefs.hasHomeFolder) {
+        if (!initialNavDone && navStack.isEmpty() && Prefs.hasHomeFolder) {
+            initialNavDone = true
             applyHomeFolder()
         } else {
             updatePath()

@@ -60,6 +60,17 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
     private lateinit var root: LinearLayout
     private val scroll: ScrollView = ScrollView(ctx)
 
+    /** Query name of the last TMDB search — needed to re-render step 2 on back. */
+    private var lastQuery = ""
+    /** LIFO re-render closures: hardware back unwinds the wizard ONE step. */
+    private val stepHistory = mutableListOf<() -> Unit>()
+    /** Bumped on every back navigation; async renders from a stale epoch
+     *  (e.g. a search finishing AFTER the user backed out) are dropped. */
+    private var epoch = 0
+    /** True while rename jobs are running — back is suppressed so the run
+     *  can't be half-aborted by a stray back press. */
+    private var executing = false
+
     companion object {
         private const val TPL_SEASON_TITLE = "{show_name}.S{ss}E{ee}.{ep_title}"
         private const val TPL_EP_TITLE = "{show_name}.{ee}.{ep_title}"
@@ -110,9 +121,23 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
         super.dismiss()
     }
 
-    override fun onBackPressed() {
-        dismiss()
+    override fun onBackPressed() = goBackStep()
+
+    /** Hardware back = previous wizard step (LIFO); at step 1 it closes. */
+    private fun goBackStep() {
+        if (executing) { toast("正在执行整理，请稍候…"); return }
+        epoch++
+        val re = if (stepHistory.isEmpty()) null else stepHistory.removeAt(stepHistory.size - 1)
+        if (re == null) { dismiss(); return }
+        re()
     }
+
+    /** Push the page we are LEAVING so back can re-render it. */
+    private fun pushHistory(re: () -> Unit) { stepHistory.add(re) }
+
+    /** Back targets (wrapped in safeRender so failures degrade gracefully). */
+    private fun renderStep1Again() = safeRender("step1") { renderTitle(); renderStep1() }
+    private fun renderStep2Again() = safeRender("step2") { renderTitle(); renderStep2Body(lastQuery) }
 
     /** Renders `block` inside the dialog, converting any failure to an in-dialog error. */
     private fun safeRender(tag: String, block: () -> Unit) {
@@ -189,6 +214,7 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
             if (raw.isNotEmpty() && season == null) {
                 toast("季号请填 1-99 的数字，或留空"); return@button
             }
+            pushHistory(::renderStep1Again)
             buildAndPreview(name, season, null)
         })
         root.addView(TextView(context).apply {
@@ -208,14 +234,20 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
             return
         }
         scope.launch {
+            val myEpoch = epoch
             safeRender("tmdb-loading") { renderTitle(); addStep("正在搜索 TMDB …") }
             try {
                 tmdbResults = TmdbApi.searchTv(key, name, Prefs.tmdbLanguage)
                 selectedShow = null
                 seasonList = emptyList()
                 tmdbSeasonSel = 1
+                lastQuery = name
+                if (epoch != myEpoch) return@launch
+                pushHistory(::renderStep1Again)
                 safeRender("step2") { renderTitle(); renderStep2Body(name) }
             } catch (e: Exception) {
+                if (epoch != myEpoch) return@launch
+                stepHistory.clear(); pushHistory(::renderStep1Again)
                 safeRender("tmdb-error") {
                     renderTitle()
                     root.addView(TextView(context).apply {
@@ -223,7 +255,7 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
                         setTextColor(ContextCompat.getColor(context, R.color.danger)); setPadding(0, 8, 0, 8)
                     })
                     root.addView(buttonSub("整理重命名(本地解析)") { buildAndPreview(name, null, null) })
-                    root.addView(buttonSub("返回") { safeRender("step1") { renderTitle(); renderStep1() } })
+                    root.addView(buttonSub("返回") { goBackStep() })
                 }
             }
         }
@@ -235,12 +267,15 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
      *  removed — one confirm dialog, then preview. */
     private fun confirmShowAndPreview(show: TmdbApi.Show) {
         scope.launch {
+            val myEpoch = epoch
             safeRender("tmdb-loading") { renderTitle(); addStep("正在获取 TMDB 季信息 …") }
             selectedShow = show
             seasonList = runCatching {
                 TmdbApi.tvSeasons(Prefs.tmdbKey, show.id, Prefs.tmdbLanguage)
             }.getOrDefault(emptyList()).ifEmpty { listOf(TmdbApi.SeasonInfo(1, "第 1 季", 0)) }
             tmdbSeasonSel = if (seasonList.any { it.number == 1 }) 1 else seasonList.first().number
+            if (epoch != myEpoch) return@launch
+            pushHistory(::renderStep2Again)
             buildAndPreview(show.name, tmdbSeasonSel, show)
         }
     }
@@ -302,8 +337,11 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
         page.addView(LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END
-            addView(textBtn("跳过TMDB本地解析") { buildAndPreview(queryName, null, null) })
-            addView(textBtn("返回上一步") { safeRender("step1") { renderTitle(); renderStep1() } })
+            addView(textBtn("跳过TMDB本地解析") {
+                pushHistory(::renderStep2Again)
+                buildAndPreview(queryName, null, null)
+            })
+            addView(textBtn("返回上一步") { goBackStep() })
         })
     }
 
@@ -476,6 +514,7 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
     // ---------- Step 3: plan + preview ----------
     private fun buildAndPreview(showName: String, userSeason: Int?, show: TmdbApi.Show?) {
         scope.launch {
+            val myEpoch = epoch
             val clean = showName.trim()
             if (clean.isEmpty()) { toast("剧集名称不能为空"); return@launch }
             safeRender("plan-loading") { renderTitle(); addStep("加载文件并生成变更预览 …") }
@@ -483,13 +522,15 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
                 items = runCatching { QuarkApi.list(folder.fid) }.getOrDefault(emptyList())
             }
             if (items.none { it.isVideo || it.isSubtitle }) {
+                if (epoch != myEpoch) return@launch
+                stepHistory.clear(); pushHistory(::renderStep1Again)
                 safeRender("plan-empty") {
                     renderTitle()
                     root.addView(TextView(context).apply {
                         text = "读取不到视频/字幕文件，请检查网络或 Cookie 后重试。"
                         textSize = 13f; setTextColor(ContextCompat.getColor(context, R.color.danger)); setPadding(0, 8, 0, 8)
                     })
-                    root.addView(buttonSub("返回") { safeRender("step1") { renderTitle(); renderStep1() } })
+                    root.addView(buttonSub("返回") { goBackStep() })
                 }
                 return@launch
             }
@@ -512,16 +553,19 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
                 RenamePlanner.build(items, clean, tpl, Prefs.seasonTemplate, userSeason, epTitles)
             }.getOrNull()
             if (plan == null) {
+                if (epoch != myEpoch) return@launch
+                stepHistory.clear(); pushHistory(::renderStep1Again)
                 safeRender("plan-error") {
                     renderTitle()
                     root.addView(TextView(context).apply {
                         text = "生成重命名计划失败，请反馈任务日志。"
                         textSize = 13f; setTextColor(ContextCompat.getColor(context, R.color.danger)); setPadding(0, 8, 0, 8)
                     })
-                    root.addView(buttonSub("返回") { safeRender("step1") { renderTitle(); renderStep1() } })
+                    root.addView(buttonSub("返回") { goBackStep() })
                 }
                 return@launch
             }
+            if (epoch != myEpoch) return@launch
             safeRender("step3") { renderTitle(); renderStep3Body() }
         }
     }
@@ -611,12 +655,14 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
                 execute(p, chosen)
             })
         }
-        root.addView(buttonSub("返回上一步") { safeRender("step1") { renderTitle(); renderStep1() } })
+        root.addView(buttonSub("返回上一步") { goBackStep() })
         root.addView(buttonSub("取消") { dismiss() })
     }
 
     // ---------- Step 4: execute ----------
     private fun execute(p: RenamePlanner.PlanResult, chosen: Set<Int>) {
+        executing = true
+        stepHistory.clear()   // no step-back while jobs are running
         safeRender("exec") {
             renderTitle()
             root.addView(stepHeader("第 4 步 · 执行中 …"))
@@ -631,6 +677,7 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
         root.addView(bar); root.addView(status)
 
         scope.launch {
+            val myEpoch = epoch
             val fidByName = items.associateBy { it.name }
             val existingFolders = runCatching { QuarkApi.list(folder.fid) }
                 .getOrDefault(emptyList()).filter { it.isFolder }.associateBy { it.name }
@@ -668,7 +715,10 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
                 done++; bar.progress = done * 100 / total
             }
             writeLog(success, failed)
-            safeRender("done") { renderTitle(); renderStep4Body(success, failed) }
+            executing = false
+            if (epoch == myEpoch) {
+                safeRender("done") { renderTitle(); renderStep4Body(success, failed) }
+            }
         }
     }
 
@@ -688,6 +738,7 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
     }
 
     private fun finishDemo(p: RenamePlanner.PlanResult) {
+        stepHistory.clear()
         val ok = p.actions.filter { it.error.isEmpty() }.map { it.newName }
         writeLog(ok, emptyList())
         safeRender("done") { renderTitle(); renderStep4Body(ok, emptyList()) }

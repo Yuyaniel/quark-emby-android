@@ -5,9 +5,11 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.FragmentManager
 import com.quarkemby.app.data.Prefs
 import com.quarkemby.app.ui.LoginFragment
 import com.quarkemby.app.ui.LogFragment
@@ -40,6 +42,20 @@ class MainActivity : AppCompatActivity() {
         if (savedInstanceState == null) {
             if (Prefs.isLoggedIn) showFiles() else showLogin()
         }
+
+        // Dispatcher-based back (predictive-back ready): pops the fragment
+        // back stack first, finishes at the root tab. FilesFragment registers
+        // its own callback later (folder-level goUp), which — being newer —
+        // consumes back first while the user is inside a folder.
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (supportFragmentManager.backStackEntryCount > 0) {
+                    supportFragmentManager.popBackStack()
+                } else {
+                    finish()
+                }
+            }
+        })
     }
 
     private fun addFragment(fragment: Fragment, toBackStack: Boolean, tag: String = fragment.javaClass.simpleName) {
@@ -59,9 +75,21 @@ class MainActivity : AppCompatActivity() {
         addFragment(FilesFragment(), false, "files")
     }
 
+    /** Flatten the fragment back stack when switching root tabs. Without
+     *  this, stale "settings"/"log" entries survive a tab switch and the
+     *  next hardware back would restore an OLD fragment instead of the
+     *  expected tab exit — ghost navigation. */
+    private fun resetBackStack() {
+        val fm = supportFragmentManager
+        if (fm.backStackEntryCount > 0) {
+            fm.popBackStackImmediate(null, FragmentManager.POP_BACK_STACK_INCLUSIVE)
+        }
+    }
+
     fun showFiles() {
         showBottomNav(true)
         highlightTab(R.id.nav_files)
+        resetBackStack()
         // repeated tab taps: skip if files is already the visible top page
         val top = supportFragmentManager.findFragmentById(R.id.fragment_container)
         if (top is com.quarkemby.app.ui.FilesFragment && top.isVisible) return
@@ -71,6 +99,7 @@ class MainActivity : AppCompatActivity() {
     fun showSettings(): Boolean {
         showBottomNav(true)
         highlightTab(R.id.nav_settings)
+        resetBackStack()
         // avoid stacking duplicate settings pages on rapid taps
         val top = supportFragmentManager.findFragmentById(R.id.fragment_container)
         if (top is SettingsFragment && top.isVisible) return true
@@ -80,14 +109,6 @@ class MainActivity : AppCompatActivity() {
 
     fun showLog() {
         addFragment(LogFragment(), true, "log")
-    }
-
-    override fun onBackPressed() {
-        if (supportFragmentManager.backStackEntryCount == 0) {
-            super.onBackPressed()
-        } else {
-            supportFragmentManager.popBackStack()
-        }
     }
 
     /** Photo-style tab state: active tab gets a darker pill container with
