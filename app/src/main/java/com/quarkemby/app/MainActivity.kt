@@ -54,7 +54,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun onLoggedIn() {
-        Prefs.lastSelectedShow = null
         showBottomNav(true)
         addFragment(FilesFragment(), false, "files")
     }

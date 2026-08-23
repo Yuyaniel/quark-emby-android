@@ -2,7 +2,6 @@ package com.quarkemby.app.ui
 
 import android.graphics.Typeface
 import android.os.Bundle
-import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -13,16 +12,13 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.fragment.app.Fragment
-import androidx.lifecycle.lifecycleScope
 import com.quarkemby.app.MainActivity
 import com.quarkemby.app.R
 import com.quarkemby.app.data.Prefs
-import com.quarkemby.app.data.TmdbApi
-import kotlinx.coroutines.launch
 
 /**
- * Settings screen: TMDB key + test, rename template, season template,
- * debug (preview-only) toggle, job log, and logout.
+ * Settings screen: season-folder template, debug (preview-only) toggle,
+ * home folder, job log, and logout.
  */
 class SettingsFragment : Fragment() {
 
@@ -51,43 +47,17 @@ class SettingsFragment : Fragment() {
             setTextColor(resources.getColor(R.color.ink, null))
         }
         root.addView(title)
-        root.addView(hint("TMDB 元数据与整理规则配置。密钥仅加密保存在本机。"))
-
-        // ---- TMDB Key ----
-        root.addView(section("TMDB API Key"))
-        val keyInput = field().apply {
-            hint = "请输入个人 TMDB v3 API Key"
-            setText(Prefs.tmdbKey)
-        }
-        root.addView(keyInput); root.addView(spacer())
-
-        root.addView(secondary("测试 TMDB Key") {
-            val key = keyInput.text.toString().trim()
-            if (key.isEmpty()) { toast("请先填入 Key"); return@secondary }
-            lifecycleScope.launch {
-                val ok = TmdbApi.testKey(key)
-                toast(if (ok) "✓ Key 有效（v3）" else "✗ Key 无效或网络失败")
-                if (ok) Prefs.tmdbKey = key
-            }
-        })
-
-        // ---- Language ----
-        root.addView(spacer()); root.addView(section("TMDB 语言"))
-        val langInput = field().apply {
-            hint = "zh-CN / en-US"
-            setText(Prefs.tmdbLanguage)
-        }
-        root.addView(langInput); root.addView(spacer())
+        root.addView(hint("整理规则与应用行为配置，全部保存在本机。"))
 
         // ---- Templates ----
-        root.addView(section("文件名模板"))
-        root.addView(hint("可用占位符：{ss} 季号、{ee} 集号、{show_name} 剧名"))
-        val renameInput = field().apply { setText(Prefs.renameTemplate) }
-        root.addView(renameInput); root.addView(spacer())
-
         root.addView(section("Season 文件夹模板"))
+        root.addView(hint("可用占位符：{ss} 季号（两位补零）"))
         val seasonInput = field().apply { setText(Prefs.seasonTemplate) }
         root.addView(seasonInput); root.addView(spacer())
+
+        root.addView(section("文件命名规则"))
+        root.addView(hint("批量重命名时输入季号：剧名.S01E01.mp4"))
+        root.addView(hint("季号留空：剧名.01.mp4"))
 
         val previewBox = CheckBox(requireContext()).apply {
             text = "调试模式：仅预览，不写入网盘"
@@ -113,9 +83,6 @@ class SettingsFragment : Fragment() {
 
         // ---- Actions ----
         root.addView(primary("保存设置") {
-            Prefs.tmdbKey = keyInput.text.toString().trim()
-            Prefs.tmdbLanguage = langInput.text.toString().trim().ifEmpty { "zh-CN" }
-            Prefs.renameTemplate = renameInput.text.toString().trim().ifEmpty { "{show_name}.{ee}" }
             Prefs.seasonTemplate = seasonInput.text.toString().trim().ifEmpty { "Season {ss}" }
             Prefs.previewOnly = previewBox.isChecked
             toast("设置已保存")

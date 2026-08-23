@@ -12,11 +12,16 @@ object RenamePlanner {
 
     class PlanResult(val actions: List<RenameAction>, val foldersNeeded: List<String>)
 
+    /**
+     * @param userSeason season number typed by the user; when set it overrides
+     *        whatever season the parser inferred from each file name.
+     */
     fun build(
         items: List<FileItem>,
         showName: String,
         renameTemplate: String,
-        seasonTemplate: String
+        seasonTemplate: String,
+        userSeason: Int? = null
     ): PlanResult {
         val videos = items.filter { it.isVideo }
         val subs = items.filter { it.isSubtitle }
@@ -33,7 +38,7 @@ object RenamePlanner {
 
         // Map videos
         for ((video, parsed) in parsedVideos) {
-            val season = parsed.season.coerceAtLeast(1)
+            val season = userSeason ?: parsed.season.coerceAtLeast(1)
             seasonsUsed.add(season)
             val baseNoExt = video.name.substringBeforeLast('.')
             val newBase = applyTemplate(

@@ -22,14 +22,6 @@ data class FileItem(
     }
 }
 
-/** A TMDB search / details candidate returned for manual selection. */
-data class TmdbShow(
-    val id: Long,
-    val name: String,
-    val firstAirYear: String,
-    val mediaType: String
-)
-
 /** One planned file change, shown in the preview before writing to drive. */
 data class RenameAction(
     val oldName: String,

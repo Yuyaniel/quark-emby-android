@@ -5,7 +5,6 @@ import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.quarkemby.app.data.models.JobLogEntry
-import com.quarkemby.app.data.models.TmdbShow
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -14,8 +13,8 @@ import java.util.Locale
 import java.util.UUID
 
 /**
- * Key-value store for the app. Credentials (Quark cookies, device headers,
- * TMDB key) live in an EncryptedSharedPreferences instance; logs and non-secret
+ * Key-value store for the app. Credentials (Quark cookies, device headers)
+ * live in an EncryptedSharedPreferences instance; logs and non-secret
  * settings in a plain SharedPreferences instance.
  */
 object Prefs {
@@ -53,18 +52,7 @@ object Prefs {
         secure.edit().remove("quark_cookies").remove("quark_headers").apply()
     }
 
-    // ---- TMDB ----
-    var tmdbKey: String
-        get() = secure.getString("tmdb_key", "") ?: ""
-        set(v) = secure.edit().putString("tmdb_key", v).apply()
-    var tmdbLanguage: String
-        get() = plain.getString("tmdb_lang", "zh-CN") ?: "zh-CN"
-        set(v) = plain.edit().putString("tmdb_lang", v).apply()
-
     // ---- Settings ----
-    var renameTemplate: String
-        get() = plain.getString("rename_tpl", "{show_name}.{ee}")!!
-        set(v) = plain.edit().putString("rename_tpl", v).apply()
     var seasonTemplate: String
         get() = plain.getString("season_tpl", "Season {ss}")!!
         set(v) = plain.edit().putString("season_tpl", v).apply()
@@ -128,7 +116,4 @@ object Prefs {
         o.optString("id"), o.optString("time"), o.optString("title"),
         o.optString("summary"), o.optString("detail")
     )
-
-    // ---- TMDB show selection cache (runtime only possibilities, transient) ----
-    var lastSelectedShow: TmdbShow? = null
 }
