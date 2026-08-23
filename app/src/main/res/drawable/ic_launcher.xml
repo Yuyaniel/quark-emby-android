@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Ordify launcher icon: flat blue squircle, ONE white folder centred
-     slightly left-down with content lines, and a diagonal pencil at the
-     lower right overlapping it. Pure vector, no gradients/shadows. -->
+<!-- Ordify launcher icon: flat blue squircle with ONE white folder
+     geometrically centred on the 108-unit canvas, plus two light blue
+     content lines. Pure vector, no gradients/shadows. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
@@ -13,35 +13,23 @@
         android:fillColor="#2B7AF6"
         android:pathData="M24,0 h60 a24,24 0 0 1 24,24 v60 a24,24 0 0 1 -24,24 h-60 a24,24 0 0 1 -24,-24 v-60 a24,24 0 0 1 24,-24 z" />
 
-    <!-- white folder, centred slightly left-down; scaled to ~52 units wide -->
+    <!-- white folder, geometrically centred (shape spans 28..80 x 33.2..74.8,
+         exact centre 54,54); scaled to ~52 units wide -->
     <group
-        android:translateX="19"
-        android:translateY="29"
+        android:translateX="22.8"
+        android:translateY="22.8"
         android:scaleX="2.6"
         android:scaleY="2.6">
         <path
             android:fillColor="#FFFFFF"
             android:pathData="M10,4H4C2.9,4 2,4.9 2,6V18C2,19.1 2.9,20 4,20H20C21.1,20 22,19.1 22,18V8C22,6.9 21.1,6 20,6H12L10,4Z" />
     </group>
+
     <!-- folder content lines -->
     <path
         android:fillColor="#B4D0F7"
-        android:pathData="M26.4,64 h30 a2.25,2.25 0 0 1 0,4.5 h-30 a2.25,2.25 0 0 1 0,-4.5 z" />
+        android:pathData="M30,58 h30 a2.25,2.25 0 0 1 0,4.5 h-30 a2.25,2.25 0 0 1 0,-4.5 z" />
     <path
         android:fillColor="#B4D0F7"
-        android:pathData="M26.4,73 h22 a2.25,2.25 0 0 1 0,4.5 h-22 a2.25,2.25 0 0 1 0,-4.5 z" />
-
-    <!-- diagonal pencil (eraser upper-right, tip lower-left) overlapping the
-         folder's lower-right corner -->
-    <group
-        android:pivotX="74"
-        android:pivotY="60"
-        android:rotation="45">
-        <path
-            android:fillColor="#FFFFFF"
-            android:pathData="M69.5,26 h3 a3,3 0 0 1 3,3 v7 a3,3 0 0 1 -3,3 h-3 a3,3 0 0 1 -3,-3 v-7 a3,3 0 0 1 3,-3 z M69.5,39.5 h9 v27 h-9 z M74,66 L78.5,75 h-9 z" />
-        <path
-            android:fillColor="#2B7AF6"
-            android:pathData="M68,38 h12 v2.6 h-12 z M68,64.5 h12 v2.6 h-12 z" />
-    </group>
+        android:pathData="M30,67 h22 a2.25,2.25 0 0 1 0,4.5 h-22 a2.25,2.25 0 0 1 0,-4.5 z" />
 </vector>
