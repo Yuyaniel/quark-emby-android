@@ -102,6 +102,21 @@ class SettingsFragment : Fragment() {
         }
         root.addView(previewBox); root.addView(spacer())
 
+        // ---- Home folder ----
+        root.addView(section("首页目录"))
+        root.addView(hint(
+            if (Prefs.hasHomeFolder) "当前默认目录：${Prefs.homeFolderName}"
+            else "暂无默认目录（启动进入根目录）——可在文件列表长按文件夹选择“设为首页目录”。"
+        ))
+        if (Prefs.hasHomeFolder) {
+            root.addView(button("清除首页目录") {
+                Prefs.homeFolderFid = ""; Prefs.homeFolderName = ""
+                render()
+                toast("已清除首页目录")
+            })
+            root.addView(spacer())
+        }
+
         // ---- Actions ----
         root.addView(button("保存设置") {
             Prefs.tmdbKey = keyInput.text.toString().trim()

@@ -5,6 +5,7 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -13,7 +14,6 @@ import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.quarkemby.app.MainActivity
 import com.quarkemby.app.R
 import com.quarkemby.app.data.Prefs
@@ -43,8 +43,35 @@ class FilesFragment : Fragment() {
         b.fileList.adapter = adapter
         b.backBtn.setOnClickListener { goUp() }
         b.refreshBtn.setOnClickListener { load() }
+        // pre-existing path (e.g. from Settings "set as home") wins over saved home
+        if (nameStack.isEmpty() && Prefs.hasHomeFolder && !restoringFromDeepLink) {
+            applyHomeFolder()
+        }
         updatePath()
         load()
+    }
+
+    private var restoringFromDeepLink = false
+
+    /** Jump into the saved home folder, remembering the way back. */
+    private fun applyHomeFolder() {
+        var fid = Prefs.homeFolderFid
+        var nm = Prefs.homeFolderName
+        // re-resolve from live API to avoid stale fid
+        lifecycleScope.launch {
+            try {
+                val all = QuarkApi.list("0")
+                val hit = all.firstOrNull { it.fid == fid || it.name == nm }
+                if (hit != null) { fid = hit.fid; nm = hit.name }
+                navStack.clear(); nameStack.clear()
+                currentFid = fid
+                nameStack.add(nm)
+                navStack.add("0")
+                updatePath(); load()
+            } catch (e: Exception) {
+                // fall back silently to root later
+            }
+        }
     }
 
     private fun updatePath() {
@@ -91,7 +118,8 @@ class FilesFragment : Fragment() {
     }
 
     private fun openMenu(item: FileItem) {
-        val sheet = BottomSheetDialog(requireContext())
+        val dlg = android.app.Dialog(requireContext())
+        dlg.window?.setBackgroundDrawableResource(android.R.color.transparent)
         val col = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(24, 20, 24, 24)
@@ -99,16 +127,51 @@ class FilesFragment : Fragment() {
             addView(menuTitle(item))
             if (item.isFolder) {
                 addView(menuRow("🎬", "Emby 批量重命名", "剧集整理 · 核心功能") {
-                    sheet.dismiss()
+                    dlg.dismiss()
                     RenameWizardFragment.newInstance(item).show(childFragmentManager, "rename_wizard")
                 })
             }
-            addView(menuRow("✏️", "重命名", "手动修改名称") { sheet.dismiss(); showRename(item) })
-            addView(menuRow("📂", "移动到", "选择网盘内目标目录") { sheet.dismiss(); showMove(item) })
-            addView(menuRow("🗑️", "删除", "二次确认后移除") { sheet.dismiss(); confirmDelete(item) })
+            addView(menuRow("✏️", "重命名", "手动修改名称") { dlg.dismiss(); showRename(item) })
+            addView(menuRow("📂", "移动到", "选择网盘内目标目录") { dlg.dismiss(); showMove(item) })
+            if (item.isFolder) {
+                addView(menuRow("🏠", "设为首页目录", "打开应用后默认进入此文件夹") {
+                    dlg.dismiss(); setAsHome(item)
+                })
+            }
+            addView(menuRow("🗑️", "删除", "二次确认后移除") { dlg.dismiss(); confirmDelete(item) })
         }
-        sheet.setContentView(col)
-        sheet.show()
+        dlg.setContentView(col)
+        centerDialog(dlg)
+        dlg.show()
+    }
+
+    private fun centerDialog(dlg: android.app.Dialog) {
+        val w = dlg.window ?: return
+        w.setGravity(Gravity.CENTER)
+        val lp = WindowManager.LayoutParams().apply {
+            copyFrom(w.attributes)
+            width = (resources.displayMetrics.widthPixels * 0.9).toInt()
+            height = WindowManager.LayoutParams.WRAP_CONTENT
+        }
+        w.attributes = lp
+        // round the corners of the content view
+        val content = dlg.findViewById<ViewGroup>(android.R.id.content)
+        if (content != null && content.childCount == 1) {
+            content.getChildAt(0).setBackgroundResource(R.color.surface)
+            content.getChildAt(0).background = roundedSurface()
+        }
+    }
+
+    private fun roundedSurface(): android.graphics.drawable.GradientDrawable =
+        android.graphics.drawable.GradientDrawable().apply {
+            cornerRadius = 20f * resources.displayMetrics.density
+            setColor(resources.getColor(R.color.surface, null))
+        }
+
+    private fun setAsHome(item: FileItem) {
+        Prefs.homeFolderFid = item.fid
+        Prefs.homeFolderName = item.name
+        toast("已将“${item.name}”设为首页目录")
     }
 
     private fun menuTitle(item: FileItem): TextView = TextView(requireContext()).apply {

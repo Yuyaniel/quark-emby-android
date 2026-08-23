@@ -72,6 +72,16 @@ object Prefs {
         get() = plain.getBoolean("preview_only", true)
         set(v) = plain.edit().putBoolean("preview_only", v).apply()
 
+    // ---- Home (default) folder ----
+    var homeFolderFid: String
+        get() = plain.getString("home_folder_fid", "") ?: ""
+        set(v) = plain.edit().putString("home_folder_fid", v).apply()
+    var homeFolderName: String
+        get() = plain.getString("home_folder_name", "") ?: ""
+        set(v) = plain.edit().putString("home_folder_name", v).apply()
+    val hasHomeFolder: Boolean
+        get() = homeFolderFid.isNotBlank()
+
     // ---- Logs ----
     private const val LOG_KEY = "job_logs"
 
