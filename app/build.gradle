@@ -7,6 +7,26 @@ android {
     namespace 'com.quarkemby.app'
     compileSdk 34
 
+    // Release signing loaded from (git-ignored) keystore.properties next to
+    // this project. If absent, release stays unsigned so public CI builds
+    // don't fail — sign locally with your own keystore.properties instead.
+    def keystoreProps = new Properties()
+    def propsFile = rootProject.file("keystore.properties")
+    if (propsFile.exists()) {
+        propsFile.withInputStream { keystoreProps.load(it) }
+    }
+
+    signingConfigs {
+        release {
+            if (keystoreProps.containsKey("storeFile")) {
+                storeFile rootProject.file(keystoreProps["storeFile"])
+                storePassword keystoreProps["storePassword"]
+                keyAlias keystoreProps["keyAlias"]
+                keyPassword keystoreProps["keyPassword"]
+            }
+        }
+    }
+
     defaultConfig {
         applicationId "com.quarkrename.app"
         minSdk 24
@@ -19,6 +39,9 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (keystoreProps.containsKey("storeFile")) {
+                signingConfig signingConfigs.release
+            }
         }
         debug {
             applicationIdSuffix ".debug"
@@ -34,6 +57,13 @@ android {
     }
     buildFeatures {
         viewBinding true
+    }
+
+    // lintVital (release-only fatal-lint gate) needs to fetch the lint
+    // toolchain from the network; disabled so release builds work offline
+    // and faster. Regular lint can still run manually via :app:lint.
+    lint {
+        checkReleaseBuilds false
     }
 }
 

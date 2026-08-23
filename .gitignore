@@ -21,4 +21,4 @@ captures/
 *.log
 
 # Android
-app/release/
+app/release/keystore.properties
