@@ -1,21 +1,26 @@
 package com.quarkemby.app.ui
 
+import android.app.Dialog
 import android.graphics.Typeface
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.Window
+import android.view.WindowManager
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.fragment.app.DialogFragment
 import androidx.lifecycle.lifecycleScope
-import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.quarkemby.app.R
 import com.quarkemby.app.data.Prefs
 import com.quarkemby.app.data.QuarkApi
@@ -29,11 +34,11 @@ import com.quarkemby.app.util.RenamePlanner
 import kotlinx.coroutines.launch
 
 /**
- * Core Emby batch-renaming wizard, shown as a bottom-sheet dialog.
- * Steps: input show name -> TMDB match/selection -> preview (with conflict
- * detection) -> execute (create Season folders, rename, move) -> result.
+ * Core Emby batch-renaming wizard, shown as a centered dialog.
+ * Steps: input show name -> TMDB match/selection -> preview (old -> new, with
+ * per-file checkboxes + conflict detection) -> execute -> result.
  */
-class RenameWizardFragment : BottomSheetDialogFragment() {
+class RenameWizardFragment : DialogFragment() {
 
     private val folder by lazy {
         val a = arguments!!
@@ -44,6 +49,7 @@ class RenameWizardFragment : BottomSheetDialogFragment() {
     private var plan: RenamePlanner.PlanResult? = null
     private var selectedShow: TmdbShow? = null
     private var tmdbResults: List<TmdbShow> = emptyList()
+    private val checkedActions = linkedSetOf<Int>() // indexes into plan.actions
 
     private lateinit var root: LinearLayout
     private var scroll: ScrollView? = null
@@ -59,16 +65,48 @@ class RenameWizardFragment : BottomSheetDialogFragment() {
         }
     }
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setStyle(STYLE_NO_TITLE, 0)
+    }
+
+    override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
+        val d = object : Dialog(requireContext()) {
+            override fun onBackPressed() = dismiss()
+        }
+        val w: Window? = d.window
+        w?.setBackgroundDrawableResource(android.R.color.transparent)
+        return d
+    }
+
+    override fun onStart() {
+        super.onStart()
+        val w = dialog?.window
+        w?.let {
+            it.setGravity(Gravity.CENTER)
+            val lp = WindowManager.LayoutParams().apply {
+                copyFrom(it.attributes)
+                width = (resources.displayMetrics.widthPixels * 0.92).toInt()
+                height = (resources.displayMetrics.heightPixels * 0.82).toInt()
+            }
+            it.attributes = lp
+        }
+        root.background = GradientDrawable().apply {
+            cornerRadius = 20f * resources.displayMetrics.density
+            setColor(resources.getColor(R.color.surface, null))
+        }
+    }
+
     override fun onCreateView(i: LayoutInflater, c: ViewGroup?, s: Bundle?): View {
         scroll = ScrollView(requireContext()).apply {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                (resources.displayMetrics.heightPixels * 0.8).toInt()
+                ViewGroup.LayoutParams.MATCH_PARENT
             )
         }
         root = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(20, 20, 20, 30)
+            setPadding(24, 22, 24, 26)
             setBackgroundResource(R.color.surface)
         }
         scroll!!.addView(root)
@@ -195,6 +233,8 @@ class RenameWizardFragment : BottomSheetDialogFragment() {
             root.addView(stepHeader("加载文件并生成变更预览 …"))
             if (items.isEmpty()) items = runCatching { QuarkApi.list(folder.fid) }.getOrDefault(emptyList())
             plan = RenamePlanner.build(items, clean, Prefs.renameTemplate, Prefs.seasonTemplate)
+            // default-check every actionable item
+            plan!!.actions.forEachIndexed { idx, a -> if (a.error.isEmpty()) checkedActions.add(idx) }
             renderStep3(clean)
         }
     }
@@ -202,48 +242,77 @@ class RenameWizardFragment : BottomSheetDialogFragment() {
     private fun renderStep3(showName: String) {
         root.removeAllViews(); renderTitle()
         val p = plan!!
-        root.addView(stepHeader("第 3 步 · 预览变更（确认后再写网盘）"))
-        p.actions.forEach { a ->
-            val node = LinearLayout(requireContext()).apply {
-                orientation = LinearLayout.VERTICAL; setPadding(4, 8, 4, 8)
+        val checked = linkedSetOf<Int>()
+
+        root.addView(stepHeader("第 3 步 · 预览重命名（勾选要执行的项目）"))
+
+        // summary: stats
+        val actionable = p.actions.indices.filter { p.actions[it].error.isEmpty() }
+        val conflictIdx = p.actions.indices.filter { p.actions[it].error.isNotEmpty() }
+        root.addView(TextView(requireContext()).apply {
+            text = "共 ${p.actions.size} 项，可执行 ${actionable.size} 项" +
+                    (if (conflictIdx.isNotEmpty()) "，${conflictIdx.size} 项异常" else "")
+            textSize = 13f; setTextColor(resources.getColor(R.color.muted, null)); setPadding(0, 0, 0, 6)
+        })
+
+        p.actions.forEachIndexed { idx, a ->
+            val bg = GradientDrawable().apply {
+                cornerRadius = 12f * resources.displayMetrics.density
+                setColor(resources.getColor(if (a.error.isNotEmpty()) R.color.danger else R.color.bg, null))
             }
-            val block = TextView(requireContext()).apply {
-                text = if (a.error.isNotEmpty()) {
-                    "⚠  ${a.oldName}\n    ${a.error}"
-                } else {
-                    "📄  ${a.oldName}\n    ➜ ${a.newName}"
-                }
-                textSize = 13f
+            val row = LinearLayout(requireContext()).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(12, 10, 12, 10)
+                background = bg
+                val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                lp.setMargins(0, 6, 0, 6)
+                layoutParams = lp
+            }
+            val cb = CheckBox(requireContext()).apply {
+                isChecked = if (a.error.isEmpty()) true else false
+                isEnabled = a.error.isEmpty()
+                setOnCheckedChangeListener { _, isCc -> if (isCc) checked.add(idx) else checked.remove(idx) }
+            }
+            row.addView(cb)
+            val col = LinearLayout(requireContext()).apply { orientation = LinearLayout.VERTICAL; setPadding(6, 0, 0, 0) }
+            col.addView(TextView(requireContext()).apply {
+                text = if (a.error.isNotEmpty()) "⚠ ${a.oldName}" else a.oldName
+                textSize = 13.5f; setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+                setTextColor(resources.getColor(R.color.ink, null))
+            })
+            col.addView(TextView(requireContext()).apply {
+                text = if (a.error.isNotEmpty()) a.error else "→ ${a.newName}"
+                textSize = 13.5f
                 setTextColor(
                     if (a.error.isNotEmpty()) resources.getColor(R.color.danger, null)
-                    else resources.getColor(R.color.ink, null)
+                    else resources.getColor(R.color.brand_secondary, null)
                 )
-            }
-            node.addView(block)
-            root.addView(node)
-        }
-        val conflict = p.actions.count { it.error.isNotEmpty() } > 0
-        if (conflict) {
-            root.addView(TextView(requireContext()).apply {
-                text = "检测到 ${p.actions.count { it.error.isNotEmpty() }} 项冲突/无法识别，将跳过执行，剩余正常执行。"
-                textSize = 13f; setTextColor(resources.getColor(R.color.warn, null)); setPadding(0, 8, 0, 8)
             })
+            row.addView(col, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            root.addView(row)
         }
+
         root.addView(TextView(requireContext()).apply {
-            text = "将创建 Season 文件夹：${p.foldersNeeded.joinToString("、")}"
-            textSize = 13f; setTextColor(resources.getColor(R.color.muted, null)); setPadding(0, 4, 0, 4)
+            text = "将创建 Season 文件夹：" + p.foldersNeeded.joinToString("、")
+            textSize = 13f; setTextColor(resources.getColor(R.color.muted, null)); setPadding(0, 8, 0, 4)
         })
         root.addView(spacer())
+
         if (Prefs.previewOnly) {
             root.addView(button("✅ 调试模式 · 仅预览（不会写网盘）") { finishDemo(p) })
         } else {
-            root.addView(button("🚀 确认并写入网盘") { execute(p) })
+            root.addView(button("🚀 重命名勾选的项目") {
+                // apply on check state captured at render time; fallback = all actionable
+                val chosen = if (checked.isNotEmpty()) checked else actionable.toSet()
+                execute(p, chosen)
+            })
         }
         root.addView(button("取消") { dismiss() })
     }
 
     // ---------- Step 4: execute ----------
-    private fun execute(p: RenamePlanner.PlanResult) {
+    private fun execute(p: RenamePlanner.PlanResult, chosen: Set<Int>) {
         root.removeAllViews(); renderTitle()
         root.addView(stepHeader("第 4 步 · 执行中 …"))
         val bar = ProgressBar(requireContext(), null, android.R.attr.progressBarStyleHorizontal).apply {
@@ -260,10 +329,15 @@ class RenameWizardFragment : BottomSheetDialogFragment() {
             val existingFolders = runCatching { QuarkApi.list(folder.fid) }
                 .getOrDefault(emptyList()).filter { it.isFolder }.associateBy { it.name }
             val seasonFids = HashMap<String, String>()
-            var done = 0; val total = p.actions.count { it.error.isEmpty() } + p.foldersNeeded.size
+            // only season folders actually used by chosen actions
+            val usedActions = chosen.map { p.actions[it] }.filter { it.error.isEmpty() }
+            val usedFolders = usedActions.map { it.seasonIdx }.distinct()
+            val total = (usedActions.size + usedFolders.size).coerceAtLeast(1)
+            var done = 0
 
             // 1) create Season folders
-            p.foldersNeeded.forEach { fname ->
+            usedFolders.forEach { si ->
+                val fname = Prefs.seasonTemplate.replace("{ss}", EpisodeParser.pad(si + 1))
                 status.text = "创建文件夹 $fname …"
                 try {
                     seasonFids[fname] = existingFolders[fname]?.fid ?: QuarkApi.createFolder(folder.fid, fname)
@@ -273,10 +347,10 @@ class RenameWizardFragment : BottomSheetDialogFragment() {
                 done++; bar.progress = done * 100 / total
             }
 
-            // 2) rename + move each action
+            // 2) rename + move each chosen action
             val success = mutableListOf<String>()
             val failed = mutableListOf<Pair<String, String>>()
-            p.actions.filter { it.error.isEmpty() }.forEach { a ->
+            usedActions.forEach { a ->
                 status.text = "处理 ${a.oldName} …"
                 try {
                     val file = fidByName[a.oldName] ?: throw Exception("本地记录缺失")
