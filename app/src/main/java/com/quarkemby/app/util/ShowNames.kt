@@ -29,8 +29,10 @@ object ShowNames {
     /** bracket pairs left EMPTY by the removals above — never keep stray "()" */
     private val emptyBracket = Regex("""\s*[(（\[【]\s*[)）\]】]""")
     private val fullWidthDigit = Regex("""[０-９]""")
-    /** final hard rule: drop anything that is not a CJK Unified Ideograph */
-    private val hanOnly = Regex("""[^\p{Han}]""")
+    /** final hard rule: drop anything outside the CJK Unified Ideographs block.
+     *  Uses an explicit Unicode range so the behaviour is identical across
+     *  Android versions (some older runtimes handle \p{Han} inconsistently). */
+    private val hanOnly = Regex("""[^\u4e00-\u9fff]""")
 
     /** full-width digits ０-９ -> 0-9 so \d patterns always match */
     private fun normalizeDigits(s: String): String =
