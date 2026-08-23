@@ -5,12 +5,18 @@ package com.quarkemby.app.util
  *   "九门(2026)"                       -> "九门"
  *   "候车室的故事 (2002) {tmdb-111436}" -> "候车室的故事"
  *   "濑户的花嫁【2024】(1080p)"         -> "濑户的花嫁"
+ *   "九门(第2季)"                      -> "九门"   (any digits in brackets)
+ *   "某剧(01)" / "某剧(S2)"            -> "某剧"
  *   "毛骗２０１０"                      -> "毛骗"   (full-width digits)
  */
 object ShowNames {
 
-    /** full-width/half-width bracket pairs containing a 4-digit year or quality tags */
-    private val yearBracket = Regex("""\s*[(（\[【][^()（）\[\]【】]*\d{4}[^()（）\[\]【】]*[)）\]】]""")
+    /** ANY bracket pair containing a digit: years (2026), season/episode tags
+     *  (第2季 / S2 / 01), quality (1080p/4K) — all removed as metadata noise.
+     *  Brackets WITHOUT digits (e.g. "(国语)") are kept. Bare digits outside
+     *  brackets (e.g. "九门2") are part of the title and preserved. */
+    private val digitBracket = Regex("""\s*[(（\[【][^()（）\[\]【】]*\d[^()（）\[\]【】]*[)）\]】]""")
+    /** bracket pairs with quality words but no digits, e.g. "(高清)" */
     private val qualityBracket = Regex("""\s*[(（\[【]\s*(4K|8K|2160p|1080p|720p|HDR|60fps|高清|蓝光|重制|修复)[^()（）\[\]【】]*[)）\]】]""", RegexOption.IGNORE_CASE)
     /** trailing metadata tags like {tmdb-111436} or {tvdb-123} */
     private val metaTag = Regex("""\s*\{[^{}]*}""")
@@ -29,7 +35,7 @@ object ShowNames {
     fun clean(raw: String): String {
         var out = normalizeDigits(raw.trim())
         out = metaTag.replace(out, "")
-        out = yearBracket.replace(out, "")
+        out = digitBracket.replace(out, "")
         out = qualityBracket.replace(out, "")
         out = looseYear.replace(out, "")
         out = trailingYear.replace(out, "")
