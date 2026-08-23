@@ -8,26 +8,35 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /**
- * Unofficial Quark drive adapter.
+ * Quark drive adapter (v2 — current web API).
  *
- * Quark provides NO official public API. All endpoints below come from
- * reverse-engineering the web/mobile client (the common `drive.quark.cn`
- * clouddrive API used by open-source Quark drivers). They are bound to the
- * Cookie + device headers captured at login and may change at any time. If a
- * call fails, QuarkApi throws a QuarkException whose message is shown to the
- * user so the API layer can be re-captured and fixed in one place.
+ * Quark provides no official public API. Endpoints below are reverse-engineered
+ * from the current web/mobile client (the `drive-pc.quark.cn` clouddrive API used
+ * by Quark's own web app and by open-source Quark drivers). Key facts confirmed as
+ * of this version:
  *
- * NOTE: Quark may require a request signature depending on the client flavor.
- * When a fresh capture shows such a header, add it inside `commonHeaders()`.
+ *  - Base host is now `drive-pc.quark.cn` (the old `drive.quark.cn` set of endpoints
+ *    returns 405 Method Not Allowed for list sorting).
+ *  - Directory listing (`/1/clouddrive/file/sort`) is a GET with query params,
+ *    root folder == `pdir_fid=0` (NOT an empty string).
+ *  - Delete takes `filelist` + `action_type=2` (no longer `fid_list`).
+ *  - A credible desktop UA + `Referer: https://pan.quark.cn/` is required.
+ *
+ * Requests are bound to the Cookie captured at login and may change at any time.
+ * On failure we throw a QuarkException whose message surfaces to the user so the
+ * API layer can be re-captured and fixed in one place.
  */
 object QuarkApi {
-    private const val BASE = "https://drive.quark.cn/1/clouddrive"
+    private const val BASE_PC = "https://drive-pc.quark.cn/1/clouddrive"
     private const val TAG = "QuarkApi"
     private val JSON = "application/json; charset=utf-8".toMediaType()
+    private val UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
+            "quark-cloud-drive/3.14.2 Chrome/120.0.0.0 Electron/24.1.3.8 Safari/537.36 Channel/pckk_other_ch"
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -38,7 +47,7 @@ object QuarkApi {
 
     private fun commonHeaders(h: kotlin.collections.Map<String, String>): kotlin.collections.Map<String, String> {
         val m = HashMap<String, String>()
-        m["User-Agent"] = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+        m["User-Agent"] = UA
         m["Referer"] = "https://pan.quark.cn/"
         m["Content-Type"] = "application/json"
         m["Cookie"] = Prefs.quarkCookies
@@ -57,77 +66,106 @@ object QuarkApi {
         return out
     }
 
+    /** GET the given path with query params; returns the parsed root JSON. */
+    private fun get(path: String, params: Map<String, String>, extra: Map<String, String> = emptyMap()): JSONObject {
+        val url = buildString {
+            append(BASE_PC).append(path)
+            var first = true
+            params.forEach { (k, v) ->
+                append(if (first) '?' else '&'); first = false
+                append(k).append('=').append(java.net.URLEncoder.encode(v, "UTF-8"))
+            }
+        }
+        val rb = Request.Builder().url(url).get()
+        commonHeaders(extra).forEach { (k, v) -> rb.addHeader(k, v) }
+        client.newCall(rb.build()).execute().use { resp ->
+            val text = resp.body?.string() ?: "{}"
+            if (!resp.isSuccessful) throw QuarkException("接口失败 HTTP ${resp.code}\n$text")
+            return checkRoot(JSONObject(text))
+        }
+    }
+
+    /** POST JSON to the given path; returns the parsed root JSON. */
     private fun post(path: String, body: JSONObject, extra: Map<String, String> = emptyMap()): JSONObject {
-        val rb = Request.Builder().url(BASE + path)
+        val rb = Request.Builder().url(BASE_PC + path)
         commonHeaders(extra).forEach { (k, v) -> rb.addHeader(k, v) }
         val req = rb.post(body.toString().toRequestBody(JSON)).build()
         client.newCall(req).execute().use { resp ->
             val text = resp.body?.string() ?: "{}"
-            if (!resp.isSuccessful) {
-                throw QuarkException("接口失败 HTTP ${resp.code}\n$text")
-            }
-            val json = JSONObject(text)
-            if (json.optInt("status", 0) != 200) {
-                val code = json.optString("code", "")
-                if (code in listOf("40200001", "loginCheck", "401", "40000005", "noLogin")) {
-                    throw QuarkException("登录凭证已失效，请重新登录")
-                }
-                throw QuarkException(json.optString("message", "请求失败 code=$code"))
-            }
-            return json
+            if (!resp.isSuccessful) throw QuarkException("接口失败 HTTP ${resp.code}\n$text")
+            return checkRoot(JSONObject(text))
         }
     }
 
-    /** List children of `parentFid` (empty = root). Returns folders first. */
-    suspend fun list(parentFid: String): List<FileItem> = withContext(Dispatchers.IO) {
-        val body = JSONObject().apply {
-            put("pid", parentFid)
-            put("pr", 1)
-            put("pwd_fid", "")
-            put("dir", JSONObject().put("desc", 0).put("name", 0).put("size", 0))
-            put("fri", 0)
-            put("sort", JSONObject().put("sort_type", 3).put("order", 1))
-            put("size", 200)
+    /** Uniform error handling: HTTP 200 bodies still carry {status, code, message}. */
+    private fun checkRoot(json: JSONObject): JSONObject {
+        val status = json.optInt("status", 0)
+        if (status != 0) {
+            val code = json.optString("code", "")
+            if (code.lowercase() in listOf("nologin", "logincheck", "401", "40000005", "40200001") ||
+                code == "0" && status in listOf(401, 403, 99)
+            ) {
+                throw QuarkException("登录凭证已失效，请重新登录")
+            }
+            throw QuarkException(json.optString("message", "请求失败 status=$status code=$code"))
         }
-        val resp = post("/file/sort", body)
-        val data = resp.optJSONObject("data") ?: JSONObject()
-        val list = data.optJSONArray("list") ?: org.json.JSONArray()
+        return json
+    }
+
+    /** List children of `parentFid` (empty/"0" = root). Returns folders first. */
+    suspend fun list(parentFid: String): List<FileItem> = withContext(Dispatchers.IO) {
+        val pid = if (parentFid.isBlank() || parentFid == "0") "0" else parentFid
+        val json = get("/file/sort", linkedMapOf(
+            "pr" to "ucpro", "fr" to "pc", "uc_param_str" to "",
+            "pdir_fid" to pid,
+            "_page" to "1", "_size" to "200",
+            "_fetch_total" to "1", "_fetch_sub_dirs" to "0",
+            "_sort" to "file_type:asc,updated_at:desc"
+        ))
+        val data = json.optJSONObject("data") ?: JSONObject()
+        // list may be either an array directly or an array of {files: [...]}
+        val list = data.optJSONArray("list") ?: JSONArray()
         val out = mutableListOf<FileItem>()
         for (i in 0 until list.length()) {
-            val it = list.getJSONObject(i)
-            val isDir = it.optInt("dir", 0) == 1
-            val name = it.optString("file_name", "")
-            val fid = it.optString("fid", it.optString("fids", "").let { f ->
-                try {
-                    org.json.JSONArray(f).optString(0, "")
-                } catch (_: Exception) { f }
-                })
-            if (fid.isEmpty() || name.isEmpty()) continue
-            out.add(
-                FileItem(
-                    fid = fid,
-                    name = name,
-                    type = if (isDir) 0 else 1,
-                    size = it.optLong("size", 0L),
-                    ext = name.substringAfterLast('.', "").let { if (it.isBlank()) "" else ".$it".lowercase() }
-                )
-            )
+            val it = list.optJSONObject(i) ?: continue
+            // when wrapped: {file_type, files:[...]}; unwrap if files present
+            val filesArr = it.optJSONArray("files")
+            if (filesArr != null && filesArr.length() > 0) {
+                for (j in 0 until filesArr.length()) parseItem(filesArr.optJSONObject(j) ?: continue, out)
+            } else {
+                parseItem(it, out)
+            }
         }
         out.sortedWith(compareBy({ !it.isFolder }, { it.name.lowercase() }))
+    }
+
+    private fun parseItem(it: JSONObject, out: MutableList<FileItem>) {
+        val isDir = it.optInt("dir", 0) == 1 || it.optString("dir", "0") == "1"
+        val name = it.optString("file_name", "")
+        val fid = it.optString("fid", "")
+        if (fid.isEmpty() || name.isEmpty()) return
+        out.add(
+            FileItem(
+                fid = fid,
+                name = name,
+                type = if (isDir) 0 else 1,
+                size = it.optLong("size", 0L),
+                ext = name.substringAfterLast('.', "").let { if (it.isBlank()) "" else ".$it".lowercase() }
+            )
+        )
     }
 
     /** Create a folder under `parentFid` returning its fid. */
     suspend fun createFolder(parentFid: String, name: String): String = withContext(Dispatchers.IO) {
         val body = JSONObject().apply {
-            put("pdir_fid", parentFid)
+            put("pdir_fid", if (parentFid.isBlank()) "0" else parentFid)
             put("file_name", name)
             put("dir_path", "")
             put("dir_init_lock", false)
         }
-        val resp = post("/file/create", body)
+        val resp = post("/file/create?pr=ucpro&fr=pc&uc_param_str=", body)
         val data = resp.optJSONObject("data") ?: JSONObject()
         data.optString("fid", "").ifEmpty {
-            // some flavors reply with an array of created fid
             val arr = data.optJSONArray("fid_list")
             if (arr != null && arr.length() > 0) arr.optString(0, "") else ""
         }
@@ -136,37 +174,39 @@ object QuarkApi {
     /** Rename a single file/folder. */
     suspend fun rename(fid: String, newName: String) = withContext(Dispatchers.IO) {
         val body = JSONObject().apply {
-            put("fid_list", org.json.JSONArray().put(fid))
+            put("filelist", JSONArray().put(fid))
             put("file_name", newName)
         }
-        post("/file/rename", body)
+        post("/file/rename?pr=ucpro&fr=pc&uc_param_str=", body)
     }
 
     /** Move files into a destination folder by fid. */
     suspend fun move(fids: List<String>, dstFid: String) = withContext(Dispatchers.IO) {
-        val arr = org.json.JSONArray()
+        val arr = JSONArray()
         fids.forEach { arr.put(it) }
         val body = JSONObject().apply {
-            put("fid_list", arr)
-            put("to_pdir_fid", dstFid)
+            put("filelist", arr)
+            put("to_pdir_fid", if (dstFid.isBlank()) "0" else dstFid)
         }
-        post("/file/move", body)
+        post("/file/move?pr=ucpro&fr=pc&uc_param_str=", body)
     }
 
     /** Delete files/folders (batch). */
     suspend fun delete(fids: List<String>) = withContext(Dispatchers.IO) {
-        val arr = org.json.JSONArray()
+        val arr = JSONArray()
         fids.forEach { arr.put(it) }
         val body = JSONObject().apply {
-            put("fid_list", arr)
+            put("action_type", 2)
+            put("filelist", arr)
+            put("exclude_fids", JSONArray())
         }
-        post("/file/delete", body)
+        post("/file/delete?pr=ucpro&fr=pc&uc_param_str=", body)
     }
 
     /** Lightweight reachability check for the drive endpoint. */
     suspend fun ping(): Boolean = withContext(Dispatchers.IO) {
         try {
-            post("/file/config", JSONObject())
+            list("0")
             true
         } catch (e: Exception) {
             Log.w(TAG, "ping failed", e); false
