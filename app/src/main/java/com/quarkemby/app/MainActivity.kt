@@ -28,6 +28,14 @@ class MainActivity : AppCompatActivity() {
     // 0 = nothing highlighted yet, so the first highlightTab() call always applies
     private var selectedTabId = 0
 
+    /** Pops the fragment back stack (settings/log pages back to files).
+     *  Enabled ONLY while a stacked page is on top — see onCreate notes. */
+    private val stackBackCallback = object : OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() {
+            supportFragmentManager.popBackStack()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         INSTANCE = this
@@ -43,19 +51,24 @@ class MainActivity : AppCompatActivity() {
             if (Prefs.isLoggedIn) showFiles() else showLogin()
         }
 
-        // Dispatcher-based back (predictive-back ready): pops the fragment
-        // back stack first, finishes at the root tab. FilesFragment registers
-        // its own callback later (folder-level goUp), which — being newer —
-        // consumes back first while the user is inside a folder.
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                if (supportFragmentManager.backStackEntryCount > 0) {
-                    supportFragmentManager.popBackStack()
-                } else {
-                    finish()
-                }
-            }
-        })
+        // Back handling (predictive-back ready). Two gated callbacks, so the
+        // relative ORDER of dispatcher callbacks can never break behaviour:
+        //
+        // 1. FilesFragment registers its own callback (enabled only while the
+        //    user is INSIDE a folder) that goes up one directory level.
+        // 2. This activity-level callback pops the fragment back stack and is
+        //    enabled ONLY while a stacked page (settings/log) is on top.
+        //
+        // With both gated by state, a disabled callback is skipped by the
+        // dispatcher regardless of ordering. This matters: lifecycle re-adds
+        // (app switch to background and back) re-insert the activity callback
+        // on TOP of the fragment's one; an always-enabled variant would then
+        // steal back presses at the files root and finish() the app instead
+        // of letting the folder callback navigate up.
+        onBackPressedDispatcher.addCallback(this, stackBackCallback)
+        supportFragmentManager.addOnBackStackChangedListener {
+            stackBackCallback.isEnabled = supportFragmentManager.backStackEntryCount > 0
+        }
     }
 
     private fun addFragment(fragment: Fragment, toBackStack: Boolean, tag: String = fragment.javaClass.simpleName) {
