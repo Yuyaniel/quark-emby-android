@@ -27,6 +27,8 @@ object ShowNames {
     /** bracket pairs left EMPTY by the removals above — never keep stray "()" */
     private val emptyBracket = Regex("""\s*[(（\[【]\s*[)）\]】]""")
     private val fullWidthDigit = Regex("""[０-９]""")
+    /** final fallback: drop anything that is not a CJK Unified Ideograph */
+    private val hanOnly = Regex("""[^\p{Han}]""")
 
     /** full-width digits ０-９ -> 0-9 so \d patterns always match */
     private fun normalizeDigits(s: String): String =
@@ -43,7 +45,10 @@ object ShowNames {
         // collapse whitespace runs and trim separator leftovers
         out = out.replace(Regex("""\s{2,}"""), " ").trim()
         out = out.trimEnd('-', '_', '·', '，', ',').trim()
-        // a folder literally named after a year must not be wiped out
+        // final fallback: keep only CJK Unified Ideographs (Chinese characters).
+        // This avoids leaking any year, season tag, punctuation, or stray
+        // non-Chinese text that previous rules did not catch.
+        out = hanOnly.replace(out, "")
         return out.ifBlank { raw.trim() }
     }
 }
