@@ -14,6 +14,7 @@ import android.view.Window
 import android.view.WindowManager
 import android.widget.CheckBox
 import android.widget.EditText
+import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -576,6 +577,65 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
         val checked = linkedSetOf<Int>().apply { addAll(actionable) }
 
         root.addView(stepHeader("第 3 步 · 预览重命名（勾选要执行的项目）"))
+
+        // ---- non-modal TMDB season switcher ----
+        // TMDB search itself never returns seasons (show-level results only),
+        // and the old season-picker window was removed; these chips restore
+        // season control right where the titles are visible. Tapping one
+        // re-runs buildAndPreview for that season (folder items are cached).
+        if (selectedShow != null && seasonList.isNotEmpty()) {
+            root.addView(TextView(context).apply {
+                text = "使用 TMDB 季（点击切换，自动重刷该季剧集标题）"
+                textSize = 12f
+                setTextColor(ContextCompat.getColor(context, R.color.muted))
+                setPadding(0, 0, 0, Ui.dp(context, 6))
+            })
+            val chipScroll = HorizontalScrollView(context).apply {
+                isHorizontalScrollBarEnabled = false
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            }
+            val chipRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+            seasonList.forEach { s ->
+                val active = s.number == tmdbSeasonSel
+                val chip = TextView(context).apply {
+                    text = "${s.name}·${s.episodeCount}集"
+                    textSize = 13f
+                    setPadding(Ui.dp(context, 14), Ui.dp(context, 7), Ui.dp(context, 14), Ui.dp(context, 7))
+                    background = GradientDrawable().apply {
+                        cornerRadius = Ui.dp(context, 20).toFloat()
+                        setColor(
+                            ContextCompat.getColor(
+                                context,
+                                if (active) R.color.brand_primary else R.color.surface_container_high
+                            )
+                        )
+                    }
+                    setTextColor(
+                        ContextCompat.getColor(
+                            context,
+                            if (active) R.color.on_primary else R.color.muted
+                        )
+                    )
+                }
+                chip.setOnClickListener {
+                    if (s.number != tmdbSeasonSel && selectedShow != null) {
+                        tmdbSeasonSel = s.number
+                        buildAndPreview(selectedShow!!.name, s.number, selectedShow)
+                    }
+                }
+                chipRow.addView(chip, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { marginEnd = Ui.dp(context, 8) })
+            }
+            chipScroll.addView(chipRow)
+            root.addView(chipScroll)
+            root.addView(TextView(context).apply {
+                text = ""  // breathing room below chips
+                textSize = 4f
+            })
+        }
 
         val conflictIdx = p.actions.indices.filter { p.actions[it].error.isNotEmpty() }
         root.addView(TextView(context).apply {
