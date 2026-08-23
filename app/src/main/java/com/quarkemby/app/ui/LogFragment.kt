@@ -13,6 +13,7 @@ import androidx.fragment.app.Fragment
 import com.quarkemby.app.R
 import com.quarkemby.app.data.Prefs
 import com.quarkemby.app.data.models.JobLogEntry
+import com.quarkemby.app.util.CrashLog
 
 /** Shows the local job history written by each batch-rename run. */
 class LogFragment : Fragment() {
@@ -36,6 +37,34 @@ class LogFragment : Fragment() {
             setTypeface(Typeface.DEFAULT, Typeface.BOLD)
             setTextColor(resources.getColor(R.color.ink, null))
         })
+
+        // last captured crash (if any) sits on top for easy feedback
+        val crash = CrashLog.read(requireContext())
+        if (crash != null) {
+            root.addView(spacer())
+            val card = LinearLayout(requireContext()).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(16, 14, 16, 14)
+                setBackgroundResource(R.drawable.bg_card_m3)
+            }
+            card.addView(TextView(requireContext()).apply {
+                text = "⚠ 上次崩溃记录"
+                textSize = 15f
+                setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+                setTextColor(resources.getColor(R.color.danger, null))
+            })
+            card.addView(TextView(requireContext()).apply {
+                text = crash.take(2000)
+                textSize = 11f
+                setTextColor(resources.getColor(R.color.muted, null))
+                setPadding(0, 6, 0, 0)
+            })
+            card.addView(Ui.secondaryTextBtn(requireContext(), "清除崩溃记录") {
+                CrashLog.clear(requireContext())
+                onViewCreated(view, s)
+            })
+            root.addView(card)
+        }
 
         val entries = Prefs.getLogEntries()
         if (entries.isEmpty()) {

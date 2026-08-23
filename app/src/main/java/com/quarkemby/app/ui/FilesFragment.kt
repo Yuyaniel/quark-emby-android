@@ -276,7 +276,8 @@ class FilesFragment : Fragment() {
             if (item.isFolder) {
                 addView(menuRow("🎬", "批量重命名", "剧集整理 · 核心功能", danger = false) {
                     dlg.dismiss()
-                    RenameWizardFragment.newInstance(item).show(childFragmentManager, "rename_wizard")
+                    // plain Dialog, same verified plumbing as this menu
+                    RenameWizard(requireActivity(), item).show()
                 })
             }
             addView(menuRow("✏️", "重命名", "手动修改名称", danger = false) { dlg.dismiss(); showRename(item) })

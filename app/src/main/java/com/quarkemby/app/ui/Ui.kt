@@ -33,6 +33,37 @@ object Ui {
     fun dangerBtn(ctx: Context, label: String, onClick: () -> Unit): AppCompatButton =
         build(ctx, label, R.drawable.bg_btn_danger, R.color.danger, onClick)
 
+    /**
+     * TextView-based button. Structurally identical to the long-press menu rows
+     * (TextView + ripple background), which are verified working on-device;
+     * used where maximum compatibility is required.
+     */
+    fun primaryTextBtn(ctx: Context, label: String, onClick: () -> Unit): TextView =
+        textBtn(ctx, label, R.drawable.bg_btn_primary, R.color.on_primary, onClick)
+
+    fun secondaryTextBtn(ctx: Context, label: String, onClick: () -> Unit): TextView =
+        textBtn(ctx, label, R.drawable.bg_btn_secondary, R.color.ink, onClick)
+
+    private fun textBtn(ctx: Context, label: String, bg: Int, textColor: Int, onClick: () -> Unit) =
+        TextView(ctx).apply {
+            text = label
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+            isClickable = true
+            isFocusable = true
+            setTextColor(ContextCompat.getColor(ctx, textColor))
+            setBackgroundResource(bg)
+            minHeight = dp(ctx, 48)
+            setPadding(dp(ctx, 16), 0, dp(ctx, 16), 0)
+            val lp = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            lp.setMargins(0, dp(ctx, 8), 0, dp(ctx, 8))
+            layoutParams = lp
+            setOnClickListener { onClick() }
+        }
+
     private fun build(ctx: Context, label: String, bg: Int, textColor: Int, onClick: () -> Unit) =
         AppCompatButton(ctx).apply {
             text = label
