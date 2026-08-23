@@ -54,8 +54,8 @@ class LogFragment : Fragment() {
     private fun card(e: JobLogEntry): View {
         val wrap = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(14, 12, 14, 12)
-            setBackgroundResource(R.drawable.bg_card)
+            setPadding(16, 14, 16, 14)
+            setBackgroundResource(R.drawable.bg_card_m3)
         }
         wrap.addView(TextView(requireContext()).apply {
             text = e.time
@@ -77,5 +77,5 @@ class LogFragment : Fragment() {
         return wrap
     }
 
-    private fun spacer() = View(requireContext()).apply { layoutParams = LinearLayout.LayoutParams(1, 10) }
+    private fun spacer() = Ui.spacer(requireContext(), 8)
 }

@@ -2,7 +2,6 @@ package com.quarkemby.app.ui
 
 import android.app.Dialog
 import android.graphics.Typeface
-import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
@@ -11,7 +10,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowManager
-import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -75,6 +73,7 @@ class RenameWizardFragment : DialogFragment() {
         }
         val w: Window? = d.window
         w?.setBackgroundDrawableResource(android.R.color.transparent)
+        Ui.applyScrim(d, 0.5f)
         return d
     }
 
@@ -90,10 +89,7 @@ class RenameWizardFragment : DialogFragment() {
             }
             it.attributes = lp
         }
-        root.background = GradientDrawable().apply {
-            cornerRadius = 20f * resources.displayMetrics.density
-            setColor(resources.getColor(R.color.surface, null))
-        }
+        root.setBackgroundResource(R.drawable.bg_scrim_dialog)
     }
 
     override fun onCreateView(i: LayoutInflater, c: ViewGroup?, s: Bundle?): View {
@@ -152,11 +148,11 @@ class RenameWizardFragment : DialogFragment() {
             if (name.isEmpty()) { toast("请输入剧集名称"); return@button }
             searchTmdb(name, yearInput.text.toString().trim())
         })
-        root.addView(button("⚡ 不使用 TMDB，直接整理（本地解析集数）") {
+        root.addView(buttonSub("⚡ 不使用 TMDB，直接整理（本地解析集数）") {
             Prefs.lastSelectedShow = null
             buildAndPreview(nameInput.text.toString().trim())
         })
-        root.addView(button("取消") { dismiss() })
+        root.addView(buttonSub("取消") { dismiss() })
     }
 
     private fun searchTmdb(name: String, year: String) {
@@ -174,8 +170,8 @@ class RenameWizardFragment : DialogFragment() {
                     text = e.message ?: "TMDB 搜索失败"; textSize = 14f
                     setTextColor(resources.getColor(R.color.danger, null)); setPadding(0, 8, 0, 8)
                 })
-                root.addView(button("⚡ 不使用 TMDB 直接整理") { buildAndPreview(name) })
-                root.addView(button("返回") { renderStep1() })
+                root.addView(buttonSub("⚡ 不使用 TMDB 直接整理") { buildAndPreview(name) })
+            root.addView(buttonSub("返回") { renderStep1() })
             }
         }
     }
@@ -221,8 +217,8 @@ class RenameWizardFragment : DialogFragment() {
         root.addView(spacer())
         val chosenName = selectedShow?.name ?: showName
         root.addView(button("使用所选剧集 · 继续") { buildAndPreview(chosenName) })
-        root.addView(button("跳过 TMDB 直接整理") { buildAndPreview(showName) })
-        root.addView(button("取消") { dismiss() })
+        root.addView(buttonSub("跳过 TMDB 直接整理") { buildAndPreview(showName) })
+        root.addView(buttonSub("取消") { dismiss() })
     }
 
     // ---------- Step 3 ----------
@@ -258,7 +254,12 @@ class RenameWizardFragment : DialogFragment() {
         p.actions.forEachIndexed { idx, a ->
             val bg = GradientDrawable().apply {
                 cornerRadius = 12f * resources.displayMetrics.density
-                setColor(resources.getColor(if (a.error.isNotEmpty()) R.color.danger else R.color.bg, null))
+                setColor(
+                    resources.getColor(
+                        if (a.error.isNotEmpty()) R.color.danger_container
+                        else R.color.surface_container_high, null
+                    )
+                )
             }
             val row = LinearLayout(requireContext()).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -300,7 +301,7 @@ class RenameWizardFragment : DialogFragment() {
         root.addView(spacer())
 
         if (Prefs.previewOnly) {
-            root.addView(button("✅ 调试模式 · 仅预览（不会写网盘）") { finishDemo(p) })
+            root.addView(buttonSub("✅ 调试模式 · 仅预览（不会写网盘）") { finishDemo(p) })
         } else {
             root.addView(button("🚀 重命名勾选的项目") {
                 // apply on check state captured at render time; fallback = all actionable
@@ -308,7 +309,7 @@ class RenameWizardFragment : DialogFragment() {
                 execute(p, chosen)
             })
         }
-        root.addView(button("取消") { dismiss() })
+        root.addView(buttonSub("取消") { dismiss() })
     }
 
     // ---------- Step 4: execute ----------
@@ -422,25 +423,15 @@ class RenameWizardFragment : DialogFragment() {
         setTextColor(resources.getColor(R.color.brand_primary, null)); setPadding(0, 14, 0, 8)
     }
 
-    private fun spacer() = View(requireContext()).apply { layoutParams = LinearLayout.LayoutParams(1, 6) }
+    private fun spacer() = Ui.spacer(requireContext(), 6)
 
-    private fun button(label: String, onClick: () -> Unit): Button =
-        Button(requireContext()).apply {
-            text = label
-            isAllCaps = false
-            setTextColor(Color.WHITE)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-                cornerRadius = 24f
-                colors = intArrayOf(resources.getColor(R.color.brand_primary, null), resources.getColor(R.color.brand_secondary, null))
-                orientation = android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT
-            }
-            setPadding(0, 0, 0, 0)
-            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-            lp.setMargins(0, 10, 0, 10)
-            layoutParams = lp
-            setOnClickListener { onClick() }
-        }
+    /** Primary CTA (filled, soft periwinkle). */
+    private fun button(label: String, onClick: () -> Unit) =
+        Ui.primaryBtn(requireContext(), label, onClick)
+
+    /** Secondary action (tonal container + outline). */
+    private fun buttonSub(label: String, onClick: () -> Unit) =
+        Ui.secondaryBtn(requireContext(), label, onClick)
 
     private fun toast(msg: String) = Toast.makeText(requireContext(), msg, Toast.LENGTH_LONG).show()
 }

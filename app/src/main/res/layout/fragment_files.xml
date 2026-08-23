@@ -5,24 +5,26 @@
     android:orientation="vertical"
     android:background="@color/bg">
 
+    <!-- M3 top bar -->
     <LinearLayout
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="56dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingHorizontal="14dp"
-        android:paddingVertical="12dp"
-        android:background="@drawable/bg_header">
+        android:paddingHorizontal="@dimen/space_s"
+        android:background="@drawable/bg_header"
+        android:elevation="2dp">
 
         <TextView
             android:id="@+id/back_btn"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:gravity="center"
             android:text="‹"
-            android:textColor="@color/white"
-            android:textSize="26sp"
-            android:textStyle="bold"
+            android:textColor="@color/ink"
+            android:textSize="24sp"
+            android:background="@drawable/ripple_circle"
             android:visibility="gone" />
 
         <TextView
@@ -30,52 +32,56 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:layout_marginEnd="8dp"
+            android:layout_marginStart="@dimen/space_xs"
             android:text="根目录"
-            android:textColor="@color/white"
-            android:textSize="15sp"
+            android:textColor="@color/ink"
+            android:textSize="16sp"
             android:textStyle="bold"
             android:maxLines="1"
             android:ellipsize="middle" />
 
         <TextView
             android:id="@+id/sort_btn"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:padding="6dp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:gravity="center"
             android:text="⇅"
-            android:textColor="@color/white"
-            android:textSize="18sp" />
+            android:textColor="@color/ink"
+            android:textSize="17sp"
+            android:background="@drawable/ripple_circle" />
 
         <TextView
             android:id="@+id/select_btn"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:padding="6dp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:gravity="center"
             android:text="☑"
-            android:textColor="@color/white"
-            android:textSize="18sp" />
+            android:textColor="@color/ink"
+            android:textSize="17sp"
+            android:background="@drawable/ripple_circle" />
 
         <TextView
             android:id="@+id/refresh_btn"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:padding="6dp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:gravity="center"
             android:text="⟳"
-            android:textColor="@color/white"
-            android:textSize="20sp" />
+            android:textColor="@color/ink"
+            android:textSize="18sp"
+            android:background="@drawable/ripple_circle" />
     </LinearLayout>
 
-    <!-- Selection action bar (hidden by default) -->
+    <!-- selection action bar -->
     <LinearLayout
         android:id="@+id/select_bar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingHorizontal="12dp"
-        android:paddingVertical="6dp"
-        android:background="@color/brand_primary"
+        android:paddingHorizontal="@dimen/space_m"
+        android:paddingVertical="@dimen/space_xs"
+        android:background="@color/surface_container_high"
+        android:elevation="1dp"
         android:visibility="gone">
 
         <TextView
@@ -84,54 +90,40 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="已选 0 项"
-            android:textColor="@color/white"
-            android:textSize="14sp"
+            android:textColor="@color/brand_primary"
+            android:textSize="13sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/select_all_btn"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:padding="8dp"
-            android:text="全选"
-            android:textColor="@color/white"
-            android:textSize="14sp" />
+            style="@style/SelectAction"
+            android:text="全选" />
 
         <TextView
             android:id="@+id/invert_btn"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:padding="8dp"
-            android:text="反选"
-            android:textColor="@color/white"
-            android:textSize="14sp" />
+            style="@style/SelectAction"
+            android:text="反选" />
 
         <TextView
             android:id="@+id/select_move_btn"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:padding="8dp"
-            android:text="移动"
-            android:textColor="@color/white"
-            android:textSize="14sp" />
+            style="@style/SelectAction"
+            android:text="移动" />
 
         <TextView
             android:id="@+id/select_delete_btn"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:padding="8dp"
+            style="@style/SelectAction"
             android:text="删除"
-            android:textColor="@color/white"
-            android:textSize="14sp" />
+            android:textColor="@color/danger" />
 
         <TextView
             android:id="@+id/select_cancel_btn"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:padding="8dp"
+            android:padding="@dimen/space_s"
             android:text="✕"
-            android:textColor="@color/white"
-            android:textSize="18sp" />
+            android:textColor="@color/muted"
+            android:textSize="16sp"
+            android:background="@drawable/ripple_circle" />
     </LinearLayout>
 
     <FrameLayout
@@ -144,21 +136,25 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:clipToPadding="false"
-            android:paddingBottom="90dp" />
+            android:paddingHorizontal="@dimen/space_m"
+            android:paddingTop="@dimen/space_s"
+            android:paddingBottom="@dimen/space_l" />
 
         <com.google.android.material.progressindicator.CircularProgressIndicator
             android:id="@+id/loading"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_gravity="center" />
+            android:layout_gravity="center"
+            android:indeterminate="true" />
 
         <TextView
             android:id="@+id/empty_view"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
-            android:text="此目录为空 · 下拉刷新"
+            android:text="此目录为空 · 点击右上角 ⟳ 刷新"
             android:textColor="@color/muted"
+            android:textSize="13sp"
             android:visibility="gone" />
 
         <TextView
@@ -167,6 +163,7 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center"
             android:textColor="@color/danger"
+            android:textSize="13sp"
             android:maxWidth="280dp"
             android:gravity="center"
             android:visibility="gone" />

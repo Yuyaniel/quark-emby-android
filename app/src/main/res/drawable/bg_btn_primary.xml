@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="@color/on_primary">
+    <!-- primary: filled, soft periwinkle, dark text -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/brand_primary" />
+            <corners android:radius="@dimen/radius_lg" />
+        </shape>
+    </item>
+</ripple>

@@ -52,6 +52,7 @@ class LoginFragment : Fragment() {
         val raw = b.loginCookieInput.text.toString().trim()
         val has = raw.isNotBlank()
         b.loginDone.isEnabled = has
+        b.loginDone.alpha = if (has) 1f else 0.45f
         b.loginStatus.text =
             if (has) "✓ 已填入 Cookie（${raw.split(';').size} 段），可直接进入" else "尚未登录 · 请粘贴 Cookie"
     }

@@ -5,16 +5,17 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.view.WindowManager
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.quarkemby.app.MainActivity
 import com.quarkemby.app.R
 import com.quarkemby.app.data.Prefs
@@ -46,6 +47,17 @@ class FilesFragment : Fragment() {
         adapter.onSelectionChanged = { count -> updateSelectionBar(count) }
         b.fileList.layoutManager = LinearLayoutManager(requireContext())
         b.fileList.adapter = adapter
+        // soft vertical gaps between list cards
+        b.fileList.addItemDecoration(object : RecyclerView.ItemDecoration() {
+            override fun getItemOffsets(
+                outRect: android.graphics.Rect, view: View,
+                parent: RecyclerView, state: RecyclerView.State
+            ) {
+                val pos = parent.getChildAdapterPosition(view)
+                outRect.top = if (pos == 0) Ui.dp(requireContext(), 10) else Ui.dp(requireContext(), 5)
+                outRect.bottom = Ui.dp(requireContext(), 5)
+            }
+        })
 
         b.backBtn.setOnClickListener { handleBack() }
         b.refreshBtn.setOnClickListener { load() }
@@ -235,82 +247,66 @@ class FilesFragment : Fragment() {
         load()
     }
 
-    // ---------- item menu ----------
+    // ---------- item menu (scrim + blur dialog) ----------
     private fun openMenu(item: FileItem) {
         val dlg = android.app.Dialog(requireContext())
         dlg.window?.setBackgroundDrawableResource(android.R.color.transparent)
         val col = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(24, 20, 24, 24)
-            setBackgroundResource(R.color.surface)
+            setPadding(24, 22, 24, 12)
+            setBackgroundResource(R.drawable.bg_scrim_dialog)
             addView(menuTitle(item))
             if (item.isFolder) {
-                addView(menuRow("🎬", "批量重命名", "剧集整理 · 核心功能") {
+                addView(menuRow("🎬", "批量重命名", "剧集整理 · 核心功能", danger = false) {
                     dlg.dismiss()
                     RenameWizardFragment.newInstance(item).show(childFragmentManager, "rename_wizard")
                 })
             }
-            addView(menuRow("✏️", "重命名", "手动修改名称") { dlg.dismiss(); showRename(item) })
-            addView(menuRow("📂", "移动到", "选择网盘内目标目录") { dlg.dismiss(); showMove(item) })
+            addView(menuRow("✏️", "重命名", "手动修改名称", danger = false) { dlg.dismiss(); showRename(item) })
+            addView(menuRow("📂", "移动到", "选择网盘内目标目录", danger = false) { dlg.dismiss(); showMove(item) })
             if (item.isFolder) {
-                addView(menuRow("🏠", "设为首页目录", "打开应用后默认进入此文件夹") {
+                addView(menuRow("🏠", "设为首页目录", "打开应用后默认进入此文件夹", danger = false) {
                     dlg.dismiss(); setAsHome(item)
                 })
             }
-            addView(menuRow("🗑️", "删除", "二次确认后移除") { dlg.dismiss(); confirmDelete(item) })
+            addView(menuRow("🗑️", "删除", "二次确认后移除", danger = true) { dlg.dismiss(); confirmDelete(item) })
         }
         dlg.setContentView(col)
-        centerDialog(dlg)
+        Ui.centerWindow(dlg, 0.88f)
+        Ui.applyScrim(dlg)
         dlg.show()
     }
 
-    private fun centerDialog(dlg: android.app.Dialog) {
-        val w = dlg.window ?: return
-        w.setGravity(Gravity.CENTER)
-        val lp = WindowManager.LayoutParams().apply {
-            copyFrom(w.attributes)
-            width = (resources.displayMetrics.widthPixels * 0.9).toInt()
-            height = WindowManager.LayoutParams.WRAP_CONTENT
-        }
-        w.attributes = lp
-        val content = dlg.findViewById<ViewGroup>(android.R.id.content)
-        if (content != null && content.childCount == 1) {
-            content.getChildAt(0).setBackgroundResource(R.color.surface)
-            content.getChildAt(0).background = roundedSurface()
-        }
+    private fun menuTitle(item: FileItem): TextView = Ui.title(requireContext(), item.name, 17f).apply {
+        maxLines = 1
+        ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
+        setPadding(6, 0, 6, 10)
     }
 
-    private fun roundedSurface(): android.graphics.drawable.GradientDrawable =
-        android.graphics.drawable.GradientDrawable().apply {
-            cornerRadius = 20f * resources.displayMetrics.density
-            setColor(resources.getColor(R.color.surface, null))
-        }
+    private fun menuRow(
+        icon: String, title: String, sub: String,
+        danger: Boolean = false, action: () -> Unit
+    ): LinearLayout = LinearLayout(requireContext()).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(6, Ui.dp(requireContext(), 8), 6, Ui.dp(requireContext(), 8))
+        foreground = ContextCompat.getDrawable(requireContext(), R.drawable.ripple_fg)
+        isClickable = true
+        setOnClickListener { action() }
+        addView(Ui.iconChip(requireContext(), icon))
+        val col = LinearLayout(requireContext()).apply { orientation = LinearLayout.VERTICAL }
+        col.addView(Ui.title(requireContext(), title, 15f).apply {
+            if (danger) setTextColor(ContextCompat.getColor(requireContext(), R.color.danger))
+        })
+        col.addView(Ui.helper(requireContext(), sub))
+        addView(col)
+    }
 
     private fun setAsHome(item: FileItem) {
         Prefs.homeFolderFid = item.fid
         Prefs.homeFolderName = item.name
         toast("已将“${item.name}”设为首页目录")
     }
-
-    private fun menuTitle(item: FileItem): TextView = TextView(requireContext()).apply {
-        text = item.name
-        textSize = 16f
-        setTextColor(resources.getColor(R.color.ink, null))
-        setPadding(6, 0, 6, 14)
-    }
-
-    private fun menuRow(icon: String, title: String, sub: String, action: () -> Unit): LinearLayout =
-        LinearLayout(requireContext()).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(4, 12, 4, 12)
-            setOnClickListener { action() }
-            addView(TextView(context).apply { text = icon; textSize = 18f; setPadding(0, 0, 14, 0) })
-            val col = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-            col.addView(TextView(context).apply { text = title; textSize = 15f; setTextColor(resources.getColor(R.color.ink, null)); setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD) })
-            col.addView(TextView(context).apply { text = sub; textSize = 12f; setTextColor(resources.getColor(R.color.muted, null)) })
-            addView(col)
-        }
 
     // ---- Rename ----
     private fun showRename(item: FileItem) {

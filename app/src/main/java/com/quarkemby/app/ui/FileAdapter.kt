@@ -1,22 +1,19 @@
 package com.quarkemby.app.ui
 
-import android.graphics.drawable.GradientDrawable
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.TextView
-import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.quarkemby.app.R
 import com.quarkemby.app.data.models.FileItem
 
 /**
- * Adapter for the drive file list. Supports two modes:
- *  - normal: tap opens, long-press enters selection mode (and selects the item)
- *  - selection: tap toggles the checkbox, long-press also toggles; selected items
- *    are visually highlighted so the caller can batch delete/move.
+ * Adapter for the drive file list. Two modes:
+ *  - normal: tap opens folder, long-press opens the context menu
+ *  - selection: tap toggles a checkbox; selected rows use a soft primary tint
  */
 class FileAdapter(
     private val onClick: (FileItem) -> Unit,
@@ -28,7 +25,6 @@ class FileAdapter(
     var selectionMode = false
         private set
 
-    /** notified whenever selection mode or the selected-count changes (count<0 = stay) */
     var onSelectionChanged: (Int) -> Unit = {}
 
     fun submit(list: List<FileItem>) {
@@ -36,7 +32,6 @@ class FileAdapter(
         items.addAll(list)
         selected.removeAll { fid -> items.none { it.fid == fid } }
         notifyDataSetChanged()
-        // report active selection count (0 if cleared by new data)
         if (selected.isNotEmpty()) onSelectionChanged(selected.size)
     }
 
@@ -111,21 +106,13 @@ class FileAdapter(
             else -> formatSize(item.size)
         }
 
-        // selection chrome
+        // card / selected card; foreground ripple comes from the XML layout
         h.check.visibility = if (selectionMode) View.VISIBLE else View.GONE
         h.check.isChecked = checked
-        if (selectionMode) {
-            h.root.background = GradientDrawable().apply {
-                cornerRadius = 12f * h.root.resources.displayMetrics.density
-                val c = if (checked)
-                    ContextCompat.getColor(h.root.context, R.color.brand_primary)
-                else ContextCompat.getColor(h.root.context, R.color.surface)
-                // checked: apply translucent alpha so row tint reads as selected
-                setColor(if (checked) 0x26FFFFFF and c or 0x26000000 else c)
-            }
-        } else {
-            h.root.background = ContextCompat.getDrawable(h.root.context, R.color.surface)
-        }
+        h.root.setBackgroundResource(
+            if (selectionMode && checked) R.drawable.bg_row_selected
+            else R.drawable.bg_card_m3
+        )
 
         h.root.setOnClickListener {
             if (selectionMode) toggle(item) else onClick(item)

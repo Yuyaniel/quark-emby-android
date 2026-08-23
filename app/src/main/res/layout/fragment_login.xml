@@ -5,27 +5,29 @@
     android:orientation="vertical"
     android:background="@color/bg">
 
+    <!-- M3 top app bar area -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="18dp"
+        android:padding="@dimen/space_xl"
         android:background="@drawable/bg_header">
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="夸克网盘登录"
-            android:textColor="@color/white"
-            android:textSize="20sp"
+            android:textColor="@color/ink"
+            android:textSize="22sp"
             android:textStyle="bold" />
+
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="@dimen/space_xs"
             android:text="请粘贴夸克网盘的 Cookie 后进入应用，凭证将本地加密保存。"
-            android:textColor="#E9EDFF"
-            android:textSize="12sp" />
+            android:textColor="@color/muted"
+            android:textSize="13sp" />
     </LinearLayout>
 
     <ScrollView
@@ -38,7 +40,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="16dp">
+            android:padding="@dimen/space_l">
 
             <TextView
                 android:id="@+id/login_status"
@@ -52,22 +54,23 @@
                 android:id="@+id/login_cookie_input"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:layout_marginBottom="4dp"
+                android:layout_marginTop="@dimen/space_m"
+                android:layout_marginBottom="@dimen/space_xs"
                 android:hint="粘贴完整 Cookie 字符串（含 ; 分隔）"
                 android:inputType="textMultiLine|textNoSuggestions"
                 android:minLines="6"
                 android:gravity="top|start"
-                android:textSize="12sp"
-                android:background="@android:drawable/editbox_background"
-                android:padding="10dp" />
+                android:textSize="13sp"
+                android:textColor="@color/ink"
+                android:background="@drawable/bg_field"
+                android:padding="@dimen/space_m" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="提示：浏览器登录 pan.quark.cn 后，从 DevTools / 抓包工具中复制 Cookie 粘贴到上方。"
                 android:textColor="@color/muted"
-                android:textSize="11sp" />
+                android:textSize="12sp" />
         </LinearLayout>
     </ScrollView>
 
@@ -75,17 +78,19 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="14dp"
+        android:padding="@dimen/space_l"
         android:background="@color/surface">
 
         <Button
             android:id="@+id/login_done"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:minHeight="48dp"
             android:text="已填入 Cookie · 进入应用"
+            android:textSize="15sp"
             android:enabled="false"
-            android:backgroundTint="@color/brand_primary"
-            android:textColor="@color/white" />
+            android:background="@drawable/bg_btn_primary"
+            android:textColor="@color/on_primary" />
     </LinearLayout>
 
 </LinearLayout>

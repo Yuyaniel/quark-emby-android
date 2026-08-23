@@ -1,13 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.QuarkEmby" parent="Theme.Material3.DayNight.NoActionBar">
+    <!-- M3 soft theme. App forces night mode; palette is muted/low-saturation. -->
+    <style name="Theme.QuarkEmby" parent="Theme.Material3.Dark.NoActionBar">
         <item name="colorPrimary">@color/brand_primary</item>
-        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorOnPrimary">@color/on_primary</item>
+        <item name="colorPrimaryContainer">@color/primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/on_primary_container</item>
         <item name="colorSecondary">@color/brand_secondary</item>
+        <item name="colorSecondaryContainer">@color/secondary_container</item>
         <item name="colorSurface">@color/surface</item>
-        <item name="android:colorBackground">@color/bg</item>
+        <item name="colorSurfaceContainer">@color/surface_container</item>
+        <item name="colorSurfaceContainerHigh">@color/surface_container_high</item>
+        <item name="colorSurfaceVariant">@color/surface_container</item>
         <item name="colorOnSurface">@color/ink</item>
-        <item name="android:statusBarColor">@color/brand_primary</item>
-        <item name="android:navigationBarColor">@color/bg</item>
+        <item name="colorOnSurfaceVariant">@color/muted</item>
+        <item name="colorOutline">@color/outline</item>
+        <item name="colorError">@color/danger</item>
+        <item name="android:colorBackground">@color/bg</item>
+        <item name="android:statusBarColor">@color/bg</item>
+        <item name="android:navigationBarColor">@color/surface_container</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:textColorHint">@color/muted</item>
+        <item name="colorControlHighlight">@color/ripple</item>
+    </style>
+
+    <!-- compact text action inside the selection bar -->
+    <style name="SelectAction">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:padding">@dimen/space_s</item>
+        <item name="android:textColor">@color/ink</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:background">@drawable/ripple_circle</item>
     </style>
 </resources>

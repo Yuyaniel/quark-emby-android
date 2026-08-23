@@ -5,15 +5,16 @@
     android:layout_height="wrap_content"
     android:orientation="horizontal"
     android:gravity="center_vertical"
-    android:paddingHorizontal="10dp"
-    android:paddingVertical="12dp"
-    android:background="@color/surface">
+    android:paddingHorizontal="@dimen/space_m"
+    android:paddingVertical="@dimen/space_s"
+    android:background="@drawable/bg_card_m3"
+    android:foreground="@drawable/ripple_fg">
 
     <CheckBox
         android:id="@+id/file_check"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginEnd="6dp"
+        android:layout_marginEnd="@dimen/space_s"
         android:visibility="gone"
         android:focusable="false"
         android:clickable="false" />
@@ -22,7 +23,7 @@
         android:id="@+id/file_icon"
         android:layout_width="40dp"
         android:layout_height="40dp"
-        android:layout_marginEnd="12dp"
+        android:layout_marginEnd="@dimen/space_m"
         android:contentDescription="@string/tab_files" />
 
     <LinearLayout

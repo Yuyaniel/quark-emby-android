@@ -1,14 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="brand_primary">#4F6DF5</color>
-    <color name="brand_secondary">#8B5CF6</color>
-    <color name="bg">#F6F7FB</color>
-    <color name="surface">#FFFFFF</color>
-    <color name="ink">#1C2130</color>
-    <color name="muted">#6A7183</color>
-    <color name="divider">#E6E8F0</color>
+    <!-- M3 soft palette (light) — muted, low-saturation -->
+    <color name="brand_primary">#6C82B8</color>
+    <color name="brand_secondary">#8D7FA6</color>
+    <color name="on_primary">#FFFFFF</color>
+    <color name="primary_container">#D3DCF2</color>
+    <color name="on_primary_container">#2B3854</color>
+    <color name="secondary_container">#E2DBEA</color>
+
+    <color name="bg">#F3F4F8</color>
+    <color name="surface">#FBFCFE</color>
+    <color name="surface_container">#EFF1F6</color>
+    <color name="surface_container_high">#E7EAF1</color>
+    <color name="ink">#20242D</color>
+    <color name="muted">#5F6675</color>
+    <color name="outline">#8A90A0</color>
+    <color name="outline_variant">#D8DCE4</color>
+    <color name="divider">#E2E5EC</color>
+
     <color name="white">#FFFFFF</color>
-    <color name="danger">#EF4444</color>
-    <color name="success">#12B981</color>
-    <color name="warn">#F59E0B</color>
+    <color name="danger">#C05858</color>
+    <color name="danger_container">#F3DBDB</color>
+    <color name="success">#5A9E7C</color>
+    <color name="warn">#A8813F</color>
+
+    <color name="scrim_surface">#F2F6FB</color>
+    <color name="ripple">#22405280</color>
 </resources>
