@@ -48,7 +48,7 @@ class LogFragment : Fragment() {
                 setBackgroundResource(R.drawable.bg_card_m3)
             }
             card.addView(TextView(requireContext()).apply {
-                text = "⚠ 上次崩溃记录"
+                text = "上次崩溃记录"
                 textSize = 15f
                 setTypeface(Typeface.DEFAULT, Typeface.BOLD)
                 setTextColor(resources.getColor(R.color.danger, null))

@@ -17,7 +17,13 @@ data class FileItem(
         get() = !isFolder && SUB_EXTS.contains(ext)
 
     companion object {
-        val VIDEO_EXTS = setOf(".mp4", ".mkv", ".avi", ".ts", ".wmv", ".mov", ".m4v", ".flv", ".webm")
+        // broad video extension set so uncommon containers (.rmvb/.iso/.ts
+        // variants) are still recognized as videos by the rename planner
+        val VIDEO_EXTS = setOf(
+            ".mp4", ".mkv", ".avi", ".ts", ".wmv", ".mov", ".m4v", ".flv",
+            ".webm", ".rmvb", ".rm", ".iso", ".mpg", ".mpeg", ".mpe", ".m2ts",
+            ".mts", ".3gp", ".vob", ".tp", ".asf", ".divx", ".f4v", ".ogm"
+        )
         val SUB_EXTS = setOf(".ass", ".srt", ".ssa", ".vtt", ".sub")
     }
 }

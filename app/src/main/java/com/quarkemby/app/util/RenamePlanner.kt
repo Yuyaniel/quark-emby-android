@@ -105,7 +105,9 @@ object RenamePlanner {
             seasonTemplate.replace("{ss}", EpisodeParser.pad(s))
         }
 
-        return PlanResult(actions.filter { it.needsRename || it.needsMove }, folders)
+        // KEEP unparseable/conflicting rows: the preview must show why a file
+        // was skipped, otherwise the dialog looks empty ("识别不到剧集").
+        return PlanResult(actions, folders)
     }
 
     /** Formats a single Emby-style file base name using the user template. */

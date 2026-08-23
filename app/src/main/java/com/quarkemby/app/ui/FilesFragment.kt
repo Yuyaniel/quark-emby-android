@@ -274,20 +274,20 @@ class FilesFragment : Fragment() {
             setBackgroundResource(R.drawable.bg_scrim_dialog)
             addView(menuTitle(item))
             if (item.isFolder) {
-                addView(menuRow("🎬", "批量重命名", "剧集整理 · 核心功能", danger = false) {
+                addView(menuRow("批", "批量重命名", "剧集整理 · 核心功能", danger = false) {
                     dlg.dismiss()
                     // plain Dialog, same verified plumbing as this menu
                     RenameWizard(requireActivity(), item).show()
                 })
             }
-            addView(menuRow("✏️", "重命名", "手动修改名称", danger = false) { dlg.dismiss(); showRename(item) })
-            addView(menuRow("📂", "移动到", "选择网盘内目标目录", danger = false) { dlg.dismiss(); showMove(item) })
+            addView(menuRow("名", "重命名", "手动修改名称", danger = false) { dlg.dismiss(); showRename(item) })
+            addView(menuRow("移", "移动到", "选择网盘内目标目录", danger = false) { dlg.dismiss(); showMove(item) })
             if (item.isFolder) {
-                addView(menuRow("🏠", "设为首页目录", "打开应用后默认进入此文件夹", danger = false) {
+                addView(menuRow("首", "设为首页目录", "打开应用后默认进入此文件夹", danger = false) {
                     dlg.dismiss(); setAsHome(item)
                 })
             }
-            addView(menuRow("🗑️", "删除", "二次确认后移除", danger = true) { dlg.dismiss(); confirmDelete(item) })
+            addView(menuRow("删", "删除", "二次确认后移除", danger = true) { dlg.dismiss(); confirmDelete(item) })
         }
         dlg.setContentView(col)
         Ui.centerWindow(dlg, 0.88f)
@@ -410,7 +410,7 @@ class FilesFragment : Fragment() {
                     }
                     kids.forEach { f ->
                         val row = TextView(requireContext()).apply {
-                            text = "📁  ${f.name}"; textSize = 15f
+                            text = "  ${f.name}"; textSize = 15f
                             setTextColor(resources.getColor(R.color.ink, null)); setPadding(8, 12, 8, 12)
                         }
                         row.setOnClickListener { stack.add(f.fid); refresh() }

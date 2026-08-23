@@ -99,7 +99,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
-            android:text="此目录为空 · 点击右上角 ⟳ 刷新"
+            android:text="此目录为空，点击右上角刷新"
             android:textColor="@color/muted"
             android:textSize="13sp"
             android:visibility="gone" />

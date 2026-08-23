@@ -32,6 +32,30 @@ object TmdbApi {
         val posterUrl: String
     )
 
+    /** One season of a show, used to let the user pick the TMDB season. */
+    data class SeasonInfo(
+        val number: Int,
+        val name: String,
+        val episodeCount: Int
+    )
+
+    /** Season list of a show (from /tv/{id} details). Season 0 = 特别篇. */
+    suspend fun tvSeasons(key: String, tvId: Long, lang: String): List<SeasonInfo> =
+        withContext(Dispatchers.IO) {
+            val root = get("$BASE/tv/$tvId?api_key=$key&language=$lang")
+            val arr = root.optJSONArray("seasons") ?: return@withContext emptyList()
+            val all = (0 until arr.length()).map { i ->
+                val o = arr.getJSONObject(i)
+                SeasonInfo(
+                    number = o.optInt("season_number"),
+                    name = o.optString("name").ifEmpty { "第 ${o.optInt("season_number")} 季" },
+                    episodeCount = o.optInt("episode_count")
+                )
+            }
+            // prefer regular seasons; keep specials only when nothing else exists
+            all.filter { it.number >= 1 }.ifEmpty { all }
+        }
+
     /** POSTER base for building image urls. */
     fun posterUrl(path: String?): String =
         if (path.isNullOrBlank()) "" else IMG + path

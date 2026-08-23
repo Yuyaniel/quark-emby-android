@@ -62,7 +62,7 @@ class SettingsFragment : Fragment() {
             if (key.isEmpty()) { toast("请先填入 Key"); return@secondary }
             lifecycleScope.launch {
                 val ok = TmdbApi.testKey(key)
-                toast(if (ok) "✓ Key 有效" else "✗ Key 无效或网络失败")
+                toast(if (ok) "Key 有效" else "Key 无效或网络失败")
                 if (ok) Prefs.tmdbKey = key
             }
         })
