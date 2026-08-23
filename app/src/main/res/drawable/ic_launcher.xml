@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Ordify launcher icon: flat blue squircle with ONE white folder
-     geometrically centred on the 108-unit canvas, plus two light blue
-     content lines. Pure vector, no gradients/shadows. -->
+<!-- Ordify launcher icon: flat blue squircle with ONE enlarged white folder
+     geometrically centred on the 108-unit canvas (~65% of canvas width),
+     plus two light blue content lines. Pure vector, no gradients/shadows. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
@@ -13,23 +13,23 @@
         android:fillColor="#2B7AF6"
         android:pathData="M24,0 h60 a24,24 0 0 1 24,24 v60 a24,24 0 0 1 -24,24 h-60 a24,24 0 0 1 -24,-24 v-60 a24,24 0 0 1 24,-24 z" />
 
-    <!-- white folder, geometrically centred (shape spans 28..80 x 33.2..74.8,
-         exact centre 54,54); scaled to ~52 units wide -->
+    <!-- white folder, enlarged (scale 3.5) and geometrically centred
+         (shape spans 19..89 x 26..82, exact centre 54,54) -->
     <group
-        android:translateX="22.8"
-        android:translateY="22.8"
-        android:scaleX="2.6"
-        android:scaleY="2.6">
+        android:translateX="12"
+        android:translateY="12"
+        android:scaleX="3.5"
+        android:scaleY="3.5">
         <path
             android:fillColor="#FFFFFF"
             android:pathData="M10,4H4C2.9,4 2,4.9 2,6V18C2,19.1 2.9,20 4,20H20C21.1,20 22,19.1 22,18V8C22,6.9 21.1,6 20,6H12L10,4Z" />
     </group>
 
-    <!-- folder content lines -->
+    <!-- folder content lines, scaled with the folder -->
     <path
         android:fillColor="#B4D0F7"
-        android:pathData="M30,58 h30 a2.25,2.25 0 0 1 0,4.5 h-30 a2.25,2.25 0 0 1 0,-4.5 z" />
+        android:pathData="M21.7,59.4 h40 a3,3 0 0 1 0,6 h-40 a3,3 0 0 1 0,-6 z" />
     <path
         android:fillColor="#B4D0F7"
-        android:pathData="M30,67 h22 a2.25,2.25 0 0 1 0,4.5 h-22 a2.25,2.25 0 0 1 0,-4.5 z" />
+        android:pathData="M21.7,71.5 h29.6 a3,3 0 0 1 0,6 h-29.6 a3,3 0 0 1 0,-6 z" />
 </vector>
