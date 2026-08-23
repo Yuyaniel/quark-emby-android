@@ -1,0 +1,6 @@
+# 手动重命名弹窗 · 深色圆角面板（固定深色，不随系统日夜间切换）
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#F0161B26" />
+    <corners android:radius="32dp" />
+</shape>

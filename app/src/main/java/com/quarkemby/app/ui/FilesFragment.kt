@@ -187,7 +187,7 @@ class FilesFragment : Fragment() {
             val targetFid = if (j == nameStack.size - 1) currentFid else navStack[j + 1]
             while (nameStack.size > j + 1) {
                 nameStack.removeAt(nameStack.size - 1)
-                navStack.removeAt(nameStack.size - 1)
+                navStack.removeAt(navStack.size - 1)
             }
             currentFid = targetFid
         }
@@ -392,7 +392,21 @@ class FilesFragment : Fragment() {
         toast("已将“${item.name}”设为首页目录")
     }
 
-    // ---- Rename ----
+    // ---- Rename (themed dark dialog) ----
+    // Fixed dark palette: the panel is always dark (like the scrim menu),
+    // independent of the system day/night theme.
+
+    // headline: brighter than body text for emphasis
+    private val renameTitleColor = 0xFFEEF1F8.toInt()
+    // input body text / hint
+    private val renameInputColor = 0xFFE3E6EC.toInt()
+    private val renameHintColor = 0xFFA6ADBB.toInt()
+    // hairline divider inside the panel
+    private val renameDividerColor = 0xFF2E3440.toInt()
+    // cancel label (secondary) / confirm label (dark-on-accent)
+    private val renameCancelColor = 0xFFA6ADBB.toInt()
+    private val renameConfirmColor = 0xFF1B2842.toInt()
+
     private fun showRename(item: FileItem) {
         val dlg = android.app.Dialog(requireContext())
         dlg.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
@@ -400,55 +414,66 @@ class FilesFragment : Fragment() {
 
         val col = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
+            // generous padding on all sides so controls never feel cramped
             setPadding(
-                Ui.dp(requireContext(), 22), Ui.dp(requireContext(), 24),
-                Ui.dp(requireContext(), 22), Ui.dp(requireContext(), 18)
+                Ui.dp(requireContext(), 28), Ui.dp(requireContext(), 32),
+                Ui.dp(requireContext(), 28), Ui.dp(requireContext(), 24)
             )
-            setBackgroundResource(R.drawable.bg_center_dialog)
+            setBackgroundResource(R.drawable.bg_rename_dialog)
         }
 
-        // headline + current name
-        col.addView(Ui.title(requireContext(), "重命名", 20f))
-        col.addView(Ui.subtitle(requireContext(), item.name).apply {
-            setPadding(0, Ui.dp(requireContext(), 2), 0, Ui.dp(requireContext(), 16))
+        // headline: enlarged, highlighted light tone
+        col.addView(TextView(requireContext()).apply {
+            text = "重命名"
+            textSize = 22f
+            setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+            setTextColor(renameTitleColor)
         })
 
-        // themed input
+        // dark input: dark surface + light text + low-saturation accent border,
+        // taller vertical padding for a comfortable touch target
         val input = EditText(requireContext()).apply {
             setText(item.name)
             setSingleLine(true)
             hint = "新名称"
-            textSize = 15f
-            setTextColor(ContextCompat.getColor(requireContext(), R.color.ink))
-            setHintTextColor(ContextCompat.getColor(requireContext(), R.color.muted))
-            background = GradientDrawable().apply {
-                cornerRadius = Ui.dp(requireContext(), 10).toFloat()
-                setColor(ContextCompat.getColor(requireContext(), R.color.surface_container_high))
-                setStroke(Ui.dp(requireContext(), 1), ContextCompat.getColor(requireContext(), R.color.outline_variant))
-            }
+            textSize = 16f
+            setTextColor(renameInputColor)
+            setHintTextColor(renameHintColor)
+            background = ContextCompat.getDrawable(requireContext(), R.drawable.bg_rename_input)
             setPadding(
-                Ui.dp(requireContext(), 14), Ui.dp(requireContext(), 12),
-                Ui.dp(requireContext(), 14), Ui.dp(requireContext(), 12)
+                Ui.dp(requireContext(), 16), Ui.dp(requireContext(), 18),
+                Ui.dp(requireContext(), 16), Ui.dp(requireContext(), 18)
             )
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = Ui.dp(requireContext(), 20) }
         }
         col.addView(input)
-        col.addView(Ui.spacer(requireContext(), 8))
 
-        // right-aligned text buttons
-        col.addView(LinearLayout(requireContext()).apply {
+        // divider above the button row
+        col.addView(View(requireContext()).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, Ui.dp(requireContext(), 1)
+            ).apply { setMargins(0, Ui.dp(requireContext(), 24), 0, Ui.dp(requireContext(), 12)) }
+            setBackgroundColor(renameDividerColor)
+        })
+
+        // horizontal button row at the bottom
+        val btnRow = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END
-            addView(renameTextBtn("取消") { dlg.dismiss() })
-            addView(renameTextBtn("确定", true) {
-                val name = input.text.toString().trim()
-                if (name.isEmpty()) { toast("名称不能为空"); return@renameTextBtn }
-                lifecycleScope.launch {
-                    try { QuarkApi.rename(item.fid, name); load() }
-                    catch (e: Exception) { toast(e.message ?: "重命名失败") }
-                }
-                dlg.dismiss()
-            })
+        }
+        btnRow.addView(renameBtn("取消", renameCancelColor, R.drawable.bg_rename_btn_secondary) { dlg.dismiss() })
+        btnRow.addView(renameBtn("确定", renameConfirmColor, R.drawable.bg_rename_btn_primary) {
+            val name = input.text.toString().trim()
+            if (name.isEmpty()) { toast("名称不能为空"); return@renameBtn }
+            lifecycleScope.launch {
+                try { QuarkApi.rename(item.fid, name); load() }
+                catch (e: Exception) { toast(e.message ?: "重命名失败") }
+            }
+            dlg.dismiss()
         })
+        col.addView(btnRow)
 
         dlg.setContentView(col)
         Ui.centerWindow(dlg, 0.88f)
@@ -456,20 +481,28 @@ class FilesFragment : Fragment() {
         dlg.show()
     }
 
-    private fun renameTextBtn(label: String, primary: Boolean = false, onClick: () -> Unit): TextView =
+    /** Pill-shaped text button. [labelColor] picks secondary vs confirm tone;
+     *  [bgRes] pairs it with the outline (cancel) or filled accent (confirm)
+     *  background. min 48dp tall for a comfortable touch target. */
+    private fun renameBtn(label: String, labelColor: Int, bgRes: Int, onClick: () -> Unit): TextView =
         TextView(requireContext()).apply {
             text = label
-            textSize = 14f
+            textSize = 15f
             isClickable = true
             isFocusable = true
+            gravity = Gravity.CENTER
             setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
-            setTextColor(
-                ContextCompat.getColor(
-                    requireContext(),
-                    if (primary) R.color.brand_primary else R.color.muted
-                )
+            setTextColor(labelColor)
+            background = ContextCompat.getDrawable(requireContext(), bgRes)
+            minHeight = Ui.dp(requireContext(), 48)
+            minWidth = Ui.dp(requireContext(), 96)
+            setPadding(
+                Ui.dp(requireContext(), 20), Ui.dp(requireContext(), 12),
+                Ui.dp(requireContext(), 20), Ui.dp(requireContext(), 12)
             )
-            setPadding(Ui.dp(requireContext(), 14), Ui.dp(requireContext(), 10), Ui.dp(requireContext(), 14), Ui.dp(requireContext(), 10))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { marginStart = Ui.dp(requireContext(), 12) }
             setOnClickListener { onClick() }
         }
 

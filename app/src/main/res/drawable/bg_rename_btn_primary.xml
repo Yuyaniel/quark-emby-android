@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 重命名弹窗 · 确定按钮：主题强调色填充 + 水波纹 -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="#66FFFFFF">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#9FB4E6" />
+            <corners android:radius="16dp" />
+        </shape>
+    </item>
+</ripple>
