@@ -40,7 +40,23 @@ object EpisodeParser {
         // 03 集 tag like "[03]" or " - 03" or "_03"
         bareSpaceNumber(base)?.let { return Result(1, it) }
 
+        // leading episode number like "01 - something.mp4" / "01-4K.高码率" / "01 something"
+        leadingNumber(base)?.let { return Result(1, it) }
+
         return null
+    }
+
+    /**
+     * Matches a season/episode number at the very start of a file name,
+     * e.g. "01 - title.mkv", "01-4K.高码率.mp4", "03 title.mp4".
+     * Only 1-2 digits, and it must be followed by a separator so we don't
+     * swallow plain names or 4-digit years.
+     */
+    private fun leadingNumber(base: String): Int? {
+        val m = Regex("""^(\d{1,2})\s*(?:[-－‒–_~]|\s)""").find(base)
+            ?: return null
+        val v = m.groupValues[1].toIntOrNull() ?: return null
+        return if (v in 0..999) v else null
     }
 
     private fun bareSpaceNumber(base: String): Int? {

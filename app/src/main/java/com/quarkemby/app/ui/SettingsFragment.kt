@@ -121,7 +121,7 @@ class SettingsFragment : Fragment() {
         root.addView(button("保存设置") {
             Prefs.tmdbKey = keyInput.text.toString().trim()
             Prefs.tmdbLanguage = langInput.text.toString().trim().ifEmpty { "zh-CN" }
-            Prefs.renameTemplate = renameInput.text.toString().trim().ifEmpty { "{show_name}.S{ss}E{ee}" }
+            Prefs.renameTemplate = renameInput.text.toString().trim().ifEmpty { "{show_name}.{ee}" }
             Prefs.seasonTemplate = seasonInput.text.toString().trim().ifEmpty { "Season {ss}" }
             Prefs.previewOnly = previewBox.isChecked
             toast("设置已保存")

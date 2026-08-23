@@ -63,7 +63,7 @@ object Prefs {
 
     // ---- Settings ----
     var renameTemplate: String
-        get() = plain.getString("rename_tpl", "{show_name}.S{ss}E{ee}")!!
+        get() = plain.getString("rename_tpl", "{show_name}.{ee}")!!
         set(v) = plain.edit().putString("rename_tpl", v).apply()
     var seasonTemplate: String
         get() = plain.getString("season_tpl", "Season {ss}")!!
