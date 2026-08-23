@@ -1,13 +1,11 @@
 package com.quarkemby.app.ui
 
-import android.graphics.Bitmap
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.webkit.CookieManager
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import com.quarkemby.app.MainActivity
@@ -15,9 +13,8 @@ import com.quarkemby.app.data.Prefs
 import com.quarkemby.app.databinding.FragmentLoginBinding
 
 /**
- * A WebView used ONLY as an authorization channel. After the user signs in we
- * capture the session cookies + device headers, store them encrypted, close
- * this view and move to the self-built file browser.
+ * Login is Cookie-only. Paste the Quark drive Cookie and tap "enter".
+ * The cookie is stored encrypted. No WebView is used here.
  */
 class LoginFragment : Fragment() {
 
@@ -30,65 +27,36 @@ class LoginFragment : Fragment() {
     }
 
     override fun onViewCreated(view: View, s: Bundle?) {
-        val webView = b.quarkWebview
+        // Pre-fill from a previous session so users can just re-enter.
+        b.loginCookieInput.setText(Prefs.quarkCookies)
+        updateState()
 
-        b.loginProgress.visibility = View.VISIBLE
-        b.loginManualToggle.setOnClickListener {
-            b.loginCookieInput.visibility =
-                if (b.loginCookieInput.visibility == View.VISIBLE) View.GONE else View.VISIBLE
-        }
-        b.loginCookieInput.setOnEditorActionListener { _, _, _ ->
-            if (captureManualCookie()) { b.loginCookieInput.visibility = View.GONE }
-            true
-        }
-        b.loginDone.isEnabled = false
+        b.loginCookieInput.addTextChangedListener(object : TextWatcher {
+            override fun afterTextChanged(e: Editable?) = updateState()
+            override fun beforeTextChanged(s: CharSequence?, a: Int, c: Int, d: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, c: Int, d: Int) {}
+        })
+
         b.loginDone.setOnClickListener {
-            if (Prefs.quarkCookies.isNotBlank()) {
-                MainActivity.INSTANCE.onLoggedIn()
+            val raw = b.loginCookieInput.text.toString().trim()
+            if (raw.isBlank()) {
+                toast("请先粘贴 Cookie")
+                return@setOnClickListener
             }
+            Prefs.quarkCookies = raw
+            MainActivity.INSTANCE.onLoggedIn()
         }
-
-        webView.settings.javaScriptEnabled = true
-        webView.settings.domStorageEnabled = true
-        webView.settings.databaseEnabled = true
-        webView.settings.mediaPlaybackRequiresUserGesture = false
-        webView.webViewClient = object : WebViewClient() {
-            override fun onPageStarted(v: WebView?, url: String?, favicon: Bitmap?) {
-                super.onPageStarted(v, url, favicon)
-                b.loginProgress.visibility = View.VISIBLE
-            }
-
-            override fun onPageFinished(v: WebView?, url: String?) {
-                super.onPageFinished(v, url)
-                b.loginProgress.visibility = View.GONE
-                tryCapture()
-            }
-        }
-
-        webView.loadUrl(MainActivity.LOGIN_URL)
     }
 
-    private fun captureManualCookie(): Boolean {
+    private fun updateState() {
         val raw = b.loginCookieInput.text.toString().trim()
-        if (raw.isEmpty()) return false
-        Prefs.quarkCookies = raw
-        Prefs.quarkDeviceHeaders = ""
-        b.loginStatus.text = "✓ 已保存手动粘贴的 Cookie，点击下方按钮进入应用"
-        b.loginDone.isEnabled = true
-        return true
+        val has = raw.isNotBlank()
+        b.loginDone.isEnabled = has
+        b.loginStatus.text =
+            if (has) "✓ 已填入 Cookie（${raw.split(';').size} 段），可直接进入" else "尚未登录 · 请粘贴 Cookie"
     }
 
-    private fun tryCapture() {
-        val cookies = CookieManager.getInstance().getCookie(MainActivity.LOGIN_URL)
-        if (cookies != null && cookies.contains("=")) {
-            Prefs.quarkCookies = cookies
-            // device fingerprint headers captured at web layer (best-effort);
-            // keep them minimal here — full device fingerprint is gathered by the API layer.
-            Prefs.quarkDeviceHeaders = ""
-            b.loginStatus.text = "✓ 已捕获登录凭据，点击下方按钮进入应用"
-            b.loginDone.isEnabled = true
-        }
-    }
+    private fun toast(msg: String) = Toast.makeText(requireContext(), msg, Toast.LENGTH_LONG).show()
 
     override fun onDestroyView() {
         super.onDestroyView()
