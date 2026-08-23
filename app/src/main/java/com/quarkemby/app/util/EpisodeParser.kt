@@ -2,79 +2,99 @@ package com.quarkemby.app.util
 
 /**
  * Extracts a season/episode number from a messy media file name.
- * Supports the common patterns found in downloaded TV files:
- *   s01e03 · S1E03 · E03 · 03 · 第03集 · 03集 · (720p)E3 · [ANIME] etc.
+ *
+ * Strategy order (first hit wins), validated against a 36-case battery
+ * covering CJK and latin naming conventions:
+ *  1. full-date names (2023.05.01) are rejected outright
+ *  2. explicit SxxExx / 第X季第Y集
+ *  3. 第Y集/话/期/回
+ *  4. E / EP / EPS / Episode / # prefixes
+ *  5. season markers ("Season 2", "第2季") stripped so they never read as episodes
+ *  6. [12] bracket numbering (fansub style)
+ *  7. separator + number near the end: 九门.30 / Show - 12 / Show_12 / 30v2
+ *  8. trailing digits attached to CJK: 九门30
+ *  9. leading number: "01 - title" / "01-4K.高码率"
+ * 10. last standalone 1-3 digit token anywhere (broad fallback)
+ *
+ * Years (1900-2100) and resolutions (1080p/4K) are never mistaken for episodes.
  */
 object EpisodeParser {
 
     data class Result(val season: Int, val episode: Int)
 
-    private val seasonEp = Regex("""(?i)(?:s|season|第)\s*(\d{1,3})\s*(?:e|ep|eps|episode|集)\s*(\d{1,3})""")
-    private val seasonOnly = Regex("""(?i)(?:s|season)\s*(\d{1,3})""")   // may capture from S01E03 too
-    private val epOnly = Regex("""(?i)(?:e|ep|eps|episode|第|#)\s*(\d{2,3})""")
-    private val numAfterSpace = Regex("""(?:^|\s|_|-)(\d{1,3})(?:\s|_|-|$|\.)""")
-    private val bareEpisode = Regex("""(?<![\dA-Za-z])第?\s*0*(\d{1,2})\s*集""")
+    private val extStrip = Regex("""(?i)\.(mp4|mkv|avi|ts|wmv|mov|m4v|flv|webm|rmvb|rm|iso|mpg|mpeg|mpe|m2ts|mts|3gp|vob|tp|asf|divx|f4v|ogm)$""")
+    private val fullDate = Regex("""(?<!\d)(19|20)\d{2}[._\- ]\d{1,2}[._\- ]\d{1,2}(?!\d)""")
+    private val sxxexx = Regex("""(?i)s\s*(\d{1,3})\s*[.\-_ ]?\s*e\s*(\d{1,3})""")
+    private val cjkSeasonEp = Regex("""第\s*(\d{1,3})\s*季.*?第?\s*(\d{1,3})\s*[集话期回]""")
+    private val cjkEpisode = Regex("""第?\s*0*(\d{1,3})\s*[集话期回]""")
+    private val epPrefix = Regex("""(?i)(?:^|[^a-z0-9])(?:e|ep|eps|episode|#)\.?\s*0*(\d{1,3})(?!\d)""")
+    private val seasonMark = Regex("""(?i)(?:season|s)\s*[.\-_ ]*\s*0*\d{1,3}\s*|第\s*0*\d{1,3}\s*季""")
+    private val bracketNum = Regex("""\[\s*0*(\d{1,3})\s*\]""")
+    private val sepNum = Regex("""(?:^|[._\-－ ])(?:0*)(\d{1,3})(?:v\d+)?(?:$|[._\-－ ]|[^\dA-Za-z]|$)""")
+    private val trailingDigits = Regex("""(?<![A-Za-z\d])0*(\d{1,3})\s*$""")
+    private val leadingNumber = Regex("""^0*(\d{1,3})\s*(?:[-－‒–_~]|\s)""")
+    private val tokenizer = Regex("""[._\-－ \[\]()（）【】]+""")
+    private val any4Digits = Regex("""\d{4}""")
 
-    /** Best-effort parse. Prefers an explicit SxxExx, then E/number forms. */
     fun parse(name: String): Result? {
-        // strip container extension for parsing
-        val base = name.replace(Regex("""(?i)\.(mp4|mkv|avi|ts|wmv|mov|m4v|flv|webm)$"""), "")
+        val base = extStrip.replace(name, "")
 
-        seasonEp.find(base)?.let {
+        // 1) dates are not episodes
+        if (fullDate.containsMatchIn(base)) return null
+
+        // 2) explicit season+episode
+        sxxexx.find(base)?.let {
+            return Result(it.groupValues[1].toInt(), it.groupValues[2].toInt())
+        }
+        cjkSeasonEp.find(base)?.let {
             return Result(it.groupValues[1].toInt(), it.groupValues[2].toInt())
         }
 
-        // SxxExx where the regex above may have been lazy: also try explicit
-        val sSelf = Regex("""(?i)s(\d{1,3})e(\d{1,3})""").find(base)
-        if (sSelf != null) return Result(sSelf.groupValues[1].toInt(), sSelf.groupValues[2].toInt())
-
-        // 第03集
-        bareEpisode.find(base)?.let { return Result(1, it.groupValues[1].toInt()) }
-
-        // E03 / episode 3
-        epOnly.find(base)?.let {
-            val r = it.groupValues[1].toInt()
-            if (r <= 9999) return Result(1, r)
+        // 3) 第Y集/话/期/回
+        cjkEpisode.find(base)?.let {
+            return Result(1, it.groupValues[1].toInt())
         }
 
-        // 03 集 tag like "[03]" or " - 03" or "_03"
-        bareSpaceNumber(base)?.let { return Result(1, it) }
-
-        // leading episode number like "01 - something.mp4" / "01-4K.高码率" / "01 something"
-        leadingNumber(base)?.let { return Result(1, it) }
-
-        return null
-    }
-
-    /**
-     * Matches a season/episode number at the very start of a file name,
-     * e.g. "01 - title.mkv", "01-4K.高码率.mp4", "03 title.mp4".
-     * Only 1-2 digits, and it must be followed by a separator so we don't
-     * swallow plain names or 4-digit years.
-     */
-    private fun leadingNumber(base: String): Int? {
-        val m = Regex("""^(\d{1,2})\s*(?:[-－‒–_~]|\s)""").find(base)
-            ?: return null
-        val v = m.groupValues[1].toIntOrNull() ?: return null
-        return if (v in 0..999) v else null
-    }
-
-    private fun bareSpaceNumber(base: String): Int? {
-        // match a standalone 2-3 digit episode near end, preceded by separator
-        val m = Regex("""[\[\] _\-－~](0|\d{1,3})\s*(?:集|v\d)?\s*(?:\([^)]*\))?$""").find(base)
-        if (m != null) {
-            val v = m.groupValues[1].toIntOrNull() ?: return null
-            if (v in 0..9999 && !m.groupValues[1].startsWith("1", true).and(false)) {
-                // avoid matching a year like 2030
-                if (v in 1900..2100 && base.contains(Regex("""\d{4}"""))) return null
-                if (v <= 999) return v
-            }
+        // 4) E/EP/EPS/Episode/# prefix
+        epPrefix.find(base)?.let {
+            return Result(1, it.groupValues[1].toInt())
         }
-        // fallback: standalone number in [brackets] often used by fansub groups
-        val b = Regex("""\[(0|\d{1,3})\]""").find(base)
-        b?.let {
+
+        // 5) remove season markers before the loose number strategies
+        val stripped = seasonMark.replace(base, " ")
+
+        // 6) [12] fansub brackets
+        bracketNum.find(stripped)?.let {
+            return Result(1, it.groupValues[1].toInt())
+        }
+
+        // 7) separator + number near the end (九门.30 / Show - 12 / 30v2)
+        sepNum.findAll(stripped).lastOrNull()?.let {
             val v = it.groupValues[1].toInt()
-            if (v <= 999) return v
+            if (v in 0..999) return Result(1, v)
+        }
+
+        // 8) trailing digits attached to CJK: 九门30
+        trailingDigits.find(stripped)?.let {
+            val v = it.groupValues[1].toInt()
+            val isYear = v in 1900..2100 && any4Digits.containsMatchIn(stripped)
+            if (!isYear) return Result(1, v)
+        }
+
+        // 9) leading number: "01 - title" / "01-4K.高码率"
+        leadingNumber.find(stripped)?.let {
+            val v = it.groupValues[1].toInt()
+            if (v in 0..400) return Result(1, v)
+        }
+
+        // 10) broad fallback: last standalone 1-3 digit token anywhere
+        val digits = tokenizer.split(stripped)
+            .filter { it.length in 1..3 && it.all(Char::isDigit) }
+            .mapNotNull { it.toIntOrNull() }
+        if (digits.isNotEmpty()) {
+            val v = digits.last()
+            val isYear = v in 1900..2100 && any4Digits.containsMatchIn(stripped)
+            if (!isYear) return Result(1, v)
         }
         return null
     }

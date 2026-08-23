@@ -408,8 +408,8 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
         })
         if (actionable.isEmpty()) {
             root.addView(TextView(context).apply {
-                text = "没有可执行项：文件名中未能解析出集数（支持 S01E01、第01集、EP01、01-xxx 等格式），" +
-                        "请先重命名文件后再整理。"
+                text = "没有可执行项：文件名中未能解析出集数。支持格式：S01E01、第01集、EP01、" +
+                        "剧名.30、剧名-30、[30]、30话、01-xxx 等，请先重命名文件后再整理。"
                 textSize = 13f; setTextColor(ContextCompat.getColor(context, R.color.danger)); setPadding(0, 4, 0, 8)
             })
         }
