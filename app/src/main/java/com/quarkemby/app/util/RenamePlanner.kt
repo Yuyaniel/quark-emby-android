@@ -110,6 +110,73 @@ object RenamePlanner {
         return PlanResult(actions, folders)
     }
 
+    /**
+     * Movie mode: no episodes, no season folders.
+     *  - single video  -> "Movie Name.ext"
+     *  - N videos      -> "Movie Name.CD1.ext", "Movie Name.CD2.ext" … (by name)
+     *  - subtitles follow their matching video base name, as in TV mode.
+     * Files are renamed IN PLACE (needsMove = false), so no Season folder
+     * is ever created for a movie.
+     */
+    fun buildMovie(items: List<FileItem>, movieName: String): PlanResult {
+        val videos = items.filter { it.isVideo }.sortedBy { it.name.lowercase() }
+        val subs = items.filter { it.isSubtitle }
+
+        val actions = mutableListOf<RenameAction>()
+        val usedTargets = HashSet<String>()
+
+        videos.forEachIndexed { i, v ->
+            val base = if (videos.size == 1) movieName else "$movieName.CD${i + 1}"
+            val newName = base + v.ext
+            val conflict = !usedTargets.add(newName.lowercase())
+            actions.add(
+                RenameAction(
+                    oldName = v.name,
+                    newName = newName,
+                    seasonIdx = 0,
+                    isSubtitle = false,
+                    needsRename = newName != v.name,
+                    needsMove = false,
+                    conflict = conflict,
+                    error = if (conflict) "目标名称冲突，请手动修正" else ""
+                )
+            )
+            // attach matching subtitle (same prefix rule as TV mode)
+            val baseNoExt = v.name.substringBeforeLast('.')
+            val sub = subs.firstOrNull {
+                it.name.startsWith(baseNoExt, ignoreCase = true) ||
+                    baseNoExt.startsWith(it.name.substringBeforeLast('.'), ignoreCase = true)
+            }
+            if (sub != null) {
+                actions.add(
+                    RenameAction(
+                        oldName = sub.name,
+                        newName = base + sub.ext,
+                        seasonIdx = 0,
+                        isSubtitle = true,
+                        needsRename = true,
+                        needsMove = false,
+                        error = ""
+                    )
+                )
+            }
+        }
+
+        // subtitles that matched no video: keep them visible with a reason
+        val matchedSubs = actions.filter { it.isSubtitle }.map { it.oldName }.toSet()
+        subs.filter { it.name !in matchedSubs }.forEach {
+            actions.add(
+                RenameAction(
+                    oldName = it.name, newName = "", seasonIdx = 0,
+                    isSubtitle = true, needsRename = false, needsMove = false,
+                    error = "未能匹配到视频，已跳过"
+                )
+            )
+        }
+
+        return PlanResult(actions, emptyList())
+    }
+
     /** Formats a single Emby-style file base name using the user template. */
     private fun applyTemplate(tpl: String, show: String, ss: String, ee: String, epTitle: String? = null): String {
         val mapped = HashMap<String, String>()

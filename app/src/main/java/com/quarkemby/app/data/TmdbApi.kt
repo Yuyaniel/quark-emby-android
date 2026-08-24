@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Minimal TMDB v3 client used to enrich renames with episode titles:
- *  - search TV by name (returns posters for visual confirmation)
+ *  - multi search (TV shows AND movies, no type restriction)
  *  - list episode names of one season
  * Requests are small GETs; the personal API key comes from Settings.
  */
@@ -29,7 +29,9 @@ object TmdbApi {
         val id: Long,
         val name: String,
         val firstAirYear: String,
-        val posterUrl: String
+        val posterUrl: String,
+        /** true = TMDB movie, false = TV show */
+        val isMovie: Boolean = false
     )
 
     /** One season of a show, used to let the user pick the TMDB season. */
@@ -64,21 +66,31 @@ object TmdbApi {
         runCatching { get("$BASE/configuration?api_key=$key") }.isSuccess
     }
 
-    /** Search TV shows; each result carries a small poster url. */
-    suspend fun searchTv(key: String, query: String, lang: String): List<Show> =
+    /** Multi search: TV shows AND movies in one query, no type restriction.
+     *  Person results are dropped; each result carries a small poster url. */
+    suspend fun searchAll(key: String, query: String, lang: String): List<Show> =
         withContext(Dispatchers.IO) {
-            val url = "$BASE/search/tv?api_key=$key&language=$lang&query=$query&page=1"
+            val url = "$BASE/search/multi?api_key=$key&language=$lang&query=$query&page=1"
             val root = get(url)
             val arr = root.optJSONArray("results") ?: return@withContext emptyList()
             val out = mutableListOf<Show>()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
+                val type = o.optString("media_type")
+                if (type != "tv" && type != "movie") continue  // skip person etc.
+                val isMovie = type == "movie"
                 out.add(
                     Show(
                         id = o.optLong("id"),
-                        name = o.optString("name").ifEmpty { o.optString("original_name") },
-                        firstAirYear = o.optString("first_air_date").take(4),
-                        posterUrl = posterUrl(o.optString("poster_path"))
+                        name = if (isMovie) {
+                            o.optString("title").ifEmpty { o.optString("original_title") }
+                        } else {
+                            o.optString("name").ifEmpty { o.optString("original_name") }
+                        },
+                        firstAirYear = (if (isMovie) o.optString("release_date")
+                                        else o.optString("first_air_date")).take(4),
+                        posterUrl = posterUrl(o.optString("poster_path")),
+                        isMovie = isMovie
                     )
                 )
             }

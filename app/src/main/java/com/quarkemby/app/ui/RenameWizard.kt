@@ -196,7 +196,7 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
         })
 
         // TMDB path: season NOT required — season chips come from TMDB in step 2
-        root.addView(button("TMDB 搜索（增加剧集标题）") {
+        root.addView(button("TMDB 搜索（电影 / 剧集）") {
             val name = nameInput.text.toString().trim()
             if (name.isEmpty()) { toast("请输入剧集名称"); return@button }
             searchTmdb(name)
@@ -241,7 +241,7 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
             val myEpoch = epoch
             safeRender("tmdb-loading") { renderTitle(); addStep("正在搜索 TMDB …") }
             try {
-                tmdbResults = TmdbApi.searchTv(key, name, Prefs.tmdbLanguage)
+                tmdbResults = TmdbApi.searchAll(key, name, Prefs.tmdbLanguage)
                 selectedShow = null
                 seasonList = emptyList()
                 tmdbSeasonSel = 1
@@ -272,8 +272,18 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
     private fun confirmShowAndPreview(show: TmdbApi.Show) {
         scope.launch {
             val myEpoch = epoch
-            safeRender("tmdb-loading") { renderTitle(); addStep("正在获取 TMDB 季信息 …") }
             selectedShow = show
+            if (show.isMovie) {
+                // movies have no seasons/episodes: straight to the preview,
+                // files are renamed in place (no Season folder)
+                seasonList = emptyList()
+                tmdbSeasonSel = 1
+                if (epoch != myEpoch) return@launch
+                pushHistory(::renderStep2Again)
+                buildAndPreview(show.name, null, show)
+                return@launch
+            }
+            safeRender("tmdb-loading") { renderTitle(); addStep("正在获取 TMDB 季信息 …") }
             seasonList = runCatching {
                 TmdbApi.tvSeasons(Prefs.tmdbKey, show.id, Prefs.tmdbLanguage)
             }.getOrDefault(emptyList()).ifEmpty { listOf(TmdbApi.SeasonInfo(1, "第 1 季", 0)) }
@@ -311,7 +321,7 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
             setTextColor(ContextCompat.getColor(context, R.color.muted))
             setPadding(0, Ui.dp(context, 2), 0, Ui.dp(context, 12))
         })
-        page.addView(stepHeader("第 2 步 · 选择剧集与季"))
+        page.addView(stepHeader("第 2 步 · 选择匹配结果"))
 
         // ---- scrollable list: first 4 rows visible, swipe for more ----
         val listColumn = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
@@ -378,7 +388,7 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
     /**
      * One TMDB result as a plain row (no card / border / radio), strictly
      * center-aligned vertically: 64×90 poster (2:3, 8dp rounded) + 2-line
-     * title + "剧集 · 年份" secondary text. 8dp vertical padding. Tapping
+     * title + "类型 · 年份" secondary text. 8dp vertical padding. Tapping
      * the row opens a confirmation dialog instead of selecting directly.
      */
     private fun showRow(show: TmdbApi.Show): LinearLayout =
@@ -425,7 +435,7 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
                 )
             })
             col.addView(TextView(context).apply {
-                text = "剧集 · ${show.firstAirYear.ifEmpty { "未知年份" }}"
+                text = "${if (show.isMovie) "电影" else "剧集"} · ${show.firstAirYear.ifEmpty { "未知年份" }}"
                 textSize = 12f; setPadding(0, Ui.dp(context, 3), 0, 0)
                 setTextColor(ContextCompat.getColor(context, R.color.muted))
             })
@@ -489,7 +499,7 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
                     setTextColor(ContextCompat.getColor(context, R.color.ink))
                 })
                 info.addView(TextView(context).apply {
-                    text = "类型：剧集"
+                    text = "类型：${if (show.isMovie) "电影" else "剧集"}"
                     textSize = 13f; setPadding(0, Ui.dp(context, 6), 0, 0)
                     setTextColor(ContextCompat.getColor(context, R.color.muted))
                 })
@@ -508,7 +518,11 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
 
             // ---- explanation paragraph, secondary color ----
             addView(TextView(context).apply {
-                text = "确认后将以 TMDB 信息（默认第 1 季，含剧集标题）直接生成重命名预览。"
+                text = if (show.isMovie) {
+                    "确认后将以 TMDB 电影名称直接生成重命名预览（原地重命名，不创建季文件夹）。"
+                } else {
+                    "确认后将以 TMDB 信息（默认第 1 季，含剧集标题）直接生成重命名预览。"
+                }
                 textSize = 14f
                 setPadding(0, Ui.dp(context, 16), 0, Ui.dp(context, 8))
                 setTextColor(ContextCompat.getColor(context, R.color.muted))
@@ -555,9 +569,11 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
                 return@launch
             }
 
-            // TMDB episode titles for the selected season (TMDB decides season)
+            // TMDB episode titles for the selected season (TMDB decides season);
+            // movies have none and take the dedicated in-place movie plan
+            val isMovie = show?.isMovie == true
             var epTitles: Map<Int, String>? = null
-            if (show != null && Prefs.tmdbKey.isNotBlank()) {
+            if (!isMovie && show != null && Prefs.tmdbKey.isNotBlank()) {
                 epTitles = runCatching {
                     TmdbApi.seasonEpisodes(Prefs.tmdbKey, show.id, userSeason ?: 1, Prefs.tmdbLanguage)
                 }.getOrNull()
@@ -570,7 +586,8 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
                 else -> TPL_NO_SEASON
             }
             plan = runCatching {
-                RenamePlanner.build(items, clean, tpl, Prefs.seasonTemplate, userSeason, epTitles)
+                if (isMovie) RenamePlanner.buildMovie(items, clean)
+                else RenamePlanner.build(items, clean, tpl, Prefs.seasonTemplate, userSeason, epTitles)
             }.getOrNull()
             if (plan == null) {
                 if (epoch != myEpoch) return@launch
@@ -741,7 +758,7 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
     // ---------- Step 4: execute ----------
     private fun execute(p: RenamePlanner.PlanResult, chosen: Set<Int>) {
         executing = true
-        stepHistory.clear()   // no-step back while jobs are running
+        stepHistory.clear()   // no step-back while jobs are running
         safeRender("exec") {
             renderTitle()
             root.addView(stepHeader("第 4 步 · 执行中 …"))
@@ -762,7 +779,9 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
                 .getOrDefault(emptyList()).filter { it.isFolder }.associateBy { it.name }
             val seasonFids = HashMap<String, String>()
             val usedActions = chosen.map { p.actions[it] }.filter { it.error.isEmpty() }
-            val usedFolders = usedActions.map { it.seasonIdx }.distinct()
+            // only actions that actually move (TV mode) need a Season folder;
+            // movie-mode actions rename in place and never create one
+            val usedFolders = usedActions.filter { it.needsMove }.map { it.seasonIdx }.distinct()
             val total = (usedActions.size + usedFolders.size).coerceAtLeast(1)
             var done = 0
 
