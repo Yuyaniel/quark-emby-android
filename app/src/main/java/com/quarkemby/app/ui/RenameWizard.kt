@@ -57,6 +57,10 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
     private var selectedShow: TmdbApi.Show? = null
     private var seasonList: List<TmdbApi.SeasonInfo> = emptyList()
     private var tmdbSeasonSel: Int = 1
+    /** Folder target name from the confirmed TMDB result, "影片名称(年份)".
+     *  Non-null only while the user checked 文件夹重命名 in the confirm dialog;
+     *  reset to null on every local-parse path and new search. */
+    private var folderRenameTo: String? = null
 
     private lateinit var root: LinearLayout
     private val scroll: ScrollView = ScrollView(ctx)
@@ -218,6 +222,7 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
             if (raw.isNotEmpty() && season == null) {
                 toast("季号请填 1-99 的数字，或留空"); return@button
             }
+            folderRenameTo = null   // local parse never renames the folder
             pushHistory(::renderStep1Again)
             buildAndPreview(name, season, null)
         })
@@ -239,6 +244,7 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
         }
         scope.launch {
             val myEpoch = epoch
+            folderRenameTo = null   // a new search drops any folder target
             safeRender("tmdb-loading") { renderTitle(); addStep("正在搜索 TMDB …") }
             try {
                 tmdbResults = TmdbApi.searchAll(key, name, Prefs.tmdbLanguage)
@@ -265,14 +271,32 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
         }
     }
 
+    /** "影片名称(年份)" folder name derived from the confirmed TMDB result;
+     *  falls back to the bare name when the year is unknown. */
+    private fun folderDisplayName(show: TmdbApi.Show): String =
+        if (show.firstAirYear.isBlank()) show.name
+        else "${show.name}(${show.firstAirYear})"
+
     /** Selecting a show loads its seasons from TMDB and jumps STRAIGHT to the
      *  rename preview (season defaults to 1). The old intermediate step-2
      *  re-render with season chips and a "使用所选剧集 · 继续" button is
-     *  removed — one confirm dialog, then preview. */
-    private fun confirmShowAndPreview(show: TmdbApi.Show) {
+     *  removed — one confirm dialog, then preview.
+     *  [renameFiles]/[renameFolder] come from the confirm-dialog checkboxes:
+     *  folder-only skips the file plan entirely and renames just the folder. */
+    private fun confirmShowAndPreview(show: TmdbApi.Show, renameFiles: Boolean, renameFolder: Boolean) {
+        folderRenameTo = if (renameFolder) folderDisplayName(show) else null
         scope.launch {
             val myEpoch = epoch
             selectedShow = show
+            if (!renameFiles) {
+                // folder-only mode: no seasons, no episode titles, no file plan
+                seasonList = emptyList()
+                tmdbSeasonSel = 1
+                if (epoch != myEpoch) return@launch
+                pushHistory(::renderStep2Again)
+                buildFolderOnlyPreview(show)
+                return@launch
+            }
             if (show.isMovie) {
                 // movies have no seasons/episodes: straight to the preview,
                 // files are renamed in place (no Season folder)
@@ -291,6 +315,88 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
             if (epoch != myEpoch) return@launch
             pushHistory(::renderStep2Again)
             buildAndPreview(show.name, tmdbSeasonSel, show)
+        }
+    }
+
+    // ---------- Step 3 (folder-only mode) ----------
+    /** Preview when ONLY 文件夹重命名 is checked: a single action renames the
+     *  folder itself to "影片名称(年份)"; every file inside stays untouched. */
+    private fun buildFolderOnlyPreview(show: TmdbApi.Show) {
+        val target = folderRenameTo ?: folderDisplayName(show)
+        safeRender("step3-folder") {
+            renderTitle()
+            root.addView(stepHeader("第 3 步 · 预览重命名（仅文件夹）"))
+            root.addView(TextView(context).apply {
+                text = "共 1 项，可执行 1 项 · 文件保持原样"
+                textSize = 13f
+                setTextColor(ContextCompat.getColor(context, R.color.muted)); setPadding(0, 0, 0, 6)
+            })
+            // single preview card, same visual style as the step-3 rows
+            root.addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(12, 10, 12, 10)
+                background = GradientDrawable().apply {
+                    cornerRadius = Ui.dp(context, 12).toFloat()
+                    setColor(ContextCompat.getColor(context, R.color.surface_container_high))
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { setMargins(0, Ui.dp(context, 6), 0, Ui.dp(context, 6)) }
+                addView(TextView(context).apply {
+                    text = folder.name
+                    textSize = 13.5f; setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+                    setTextColor(ContextCompat.getColor(context, R.color.ink))
+                })
+                addView(TextView(context).apply {
+                    text = "→ $target"
+                    textSize = 13.5f
+                    setTextColor(ContextCompat.getColor(context, R.color.brand_secondary))
+                })
+            })
+            root.addView(spacer())
+            if (Prefs.previewOnly) {
+                root.addView(buttonSub("调试模式 · 仅预览（不会写网盘）") {
+                    stepHistory.clear()
+                    writeLog(listOf(target), emptyList())
+                    safeRender("done") { renderTitle(); renderStep4Body(listOf(target), emptyList()) }
+                })
+            } else {
+                root.addView(button("重命名文件夹") { executeFolderOnly(target) })
+            }
+            root.addView(buttonSub("返回上一步") { goBackStep() })
+            root.addView(buttonSub("取消") { dismiss() })
+        }
+    }
+
+    /** Executes the folder-only rename (no file actions at all). */
+    private fun executeFolderOnly(target: String) {
+        executing = true
+        stepHistory.clear()
+        safeRender("exec-folder") {
+            renderTitle()
+            root.addView(stepHeader("第 4 步 · 执行中 …"))
+        }
+        val status = TextView(context).apply {
+            text = "准备中…"; textSize = 13f
+            setTextColor(ContextCompat.getColor(context, R.color.muted)); setPadding(0, 6, 0, 0)
+        }
+        root.addView(status)
+        scope.launch {
+            val myEpoch = epoch
+            val success = mutableListOf<String>()
+            val failed = mutableListOf<Pair<String, String>>()
+            status.text = "重命名文件夹 → $target …"
+            try {
+                QuarkApi.rename(folder.fid, target)
+                success.add("文件夹：${folder.name} → $target")
+            } catch (e: Exception) {
+                failed.add(folder.name to (e.message ?: "重命名失败"))
+            }
+            writeLog(success, failed)
+            executing = false
+            if (epoch == myEpoch) {
+                safeRender("done") { renderTitle(); renderStep4Body(success, failed) }
+            }
         }
     }
 
@@ -368,6 +474,7 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END
             addView(textBtn("跳过TMDB本地解析") {
+                folderRenameTo = null   // local parse never renames the folder
                 pushHistory(::renderStep2Again)
                 buildAndPreview(queryName, null, null)
             })
@@ -388,7 +495,7 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
     /**
      * One TMDB result as a plain row (no card / border / radio), strictly
      * center-aligned vertically: 64×90 poster (2:3, 8dp rounded) + 2-line
-     * title + "类型 · 年份" secondary text. 8dp vertical padding. Tapping
+     * title + "剧集 · 年份" secondary text. 8dp vertical padding. Tapping
      * the row opens a confirmation dialog instead of selecting directly.
      */
     private fun showRow(show: TmdbApi.Show): LinearLayout =
@@ -448,9 +555,10 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
     /**
      * Second-step confirmation: centered dialog showing the show's info
      * before committing (same structure as the scrape-confirm dialog):
-     * left-aligned headline / poster+info row / explanation paragraph /
-     * right-aligned TextButtons. 开始整理 loads seasons and jumps STRAIGHT
-     * to the rename preview (default season 1); 返回 just closes it.
+     * left-aligned headline / poster+info row / option checkboxes /
+     * explanation paragraph / right-aligned TextButtons. 开始整理 loads
+     * seasons and jumps STRAIGHT to the rename preview (default season 1);
+     * 返回 just closes it.
      */
     private fun showConfirmDialog(show: TmdbApi.Show) {
         val dlg = Dialog(context)
@@ -516,16 +624,44 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
                 addView(info, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             })
 
-            // ---- explanation paragraph, secondary color ----
-            addView(TextView(context).apply {
-                text = if (show.isMovie) {
-                    "确认后将以 TMDB 电影名称直接生成重命名预览（原地重命名，不创建季文件夹）。"
-                } else {
-                    "确认后将以 TMDB 信息（默认第 1 季，含剧集标题）直接生成重命名预览。"
-                }
+            // ---- option checkboxes: file rename / folder rename (compact) ----
+            val cbFiles = CheckBox(context).apply {
+                text = "影片重命名"; textSize = 14f; isChecked = true
+            }
+            val cbFolder = CheckBox(context).apply {
+                text = "文件夹重命名"; textSize = 14f; isChecked = true
+                setPadding(Ui.dp(context, 14), 0, 0, 0)
+            }
+
+            // ---- explanation paragraph, follows the checkbox state ----
+            val explain = TextView(context).apply {
                 textSize = 14f
-                setPadding(0, Ui.dp(context, 16), 0, Ui.dp(context, 8))
+                setPadding(0, Ui.dp(context, 14), 0, Ui.dp(context, 4))
                 setTextColor(ContextCompat.getColor(context, R.color.muted))
+            }
+            fun syncExplain() {
+                explain.text = when {
+                    !cbFiles.isChecked && cbFolder.isChecked ->
+                        "仅重命名文件夹为「${folderDisplayName(show)}」，文件保持原样。"
+                    cbFiles.isChecked && cbFolder.isChecked && show.isMovie ->
+                        "确认后将以 TMDB 电影名称重命名影片文件，并将文件夹命名为「${folderDisplayName(show)}」（不创建季文件夹）。"
+                    cbFiles.isChecked && cbFolder.isChecked ->
+                        "确认后将重命名剧集文件（默认第 1 季，含剧集标题），并将文件夹命名为「${folderDisplayName(show)}」。"
+                    show.isMovie ->
+                        "确认后将以 TMDB 电影名称直接生成重命名预览（原地重命名，不创建季文件夹）。"
+                    else ->
+                        "确认后将以 TMDB 信息（默认第 1 季，含剧集标题）直接生成重命名预览。"
+                }
+            }
+            cbFiles.setOnCheckedChangeListener { _, _ -> syncExplain() }
+            cbFolder.setOnCheckedChangeListener { _, _ -> syncExplain() }
+            syncExplain()
+
+            addView(explain)
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, Ui.dp(context, 2), 0, 0)
+                addView(cbFiles); addView(cbFolder)
             })
 
             // ---- actions, right-aligned TextButtons ----
@@ -534,8 +670,11 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
                 gravity = Gravity.END
                 addView(textBtn("返回") { dlg.dismiss() })
                 addView(textBtn("开始整理") {
+                    if (!cbFiles.isChecked && !cbFolder.isChecked) {
+                        toast("请至少选择一种重命名方式"); return@textBtn
+                    }
                     dlg.dismiss()
-                    confirmShowAndPreview(show)
+                    confirmShowAndPreview(show, cbFiles.isChecked, cbFolder.isChecked)
                 })
             })
         }
@@ -741,6 +880,12 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
                 textSize = 13f; setTextColor(ContextCompat.getColor(context, R.color.muted)); setPadding(0, 8, 0, 4)
             })
         }
+        folderRenameTo?.let { target ->
+            root.addView(TextView(context).apply {
+                text = "将同时重命名文件夹：${folder.name} → $target"
+                textSize = 13f; setTextColor(ContextCompat.getColor(context, R.color.muted)); setPadding(0, 8, 0, 4)
+            })
+        }
         root.addView(spacer())
 
         if (Prefs.previewOnly) {
@@ -782,7 +927,10 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
             // only actions that actually move (TV mode) need a Season folder;
             // movie-mode actions rename in place and never create one
             val usedFolders = usedActions.filter { it.needsMove }.map { it.seasonIdx }.distinct()
-            val total = (usedActions.size + usedFolders.size).coerceAtLeast(1)
+            // folder self-rename is one extra op when that option is checked
+            val folderTarget = folderRenameTo
+            val total = (usedActions.size + usedFolders.size +
+                    (if (folderTarget != null) 1 else 0)).coerceAtLeast(1)
             var done = 0
 
             usedFolders.forEach { si ->
@@ -812,6 +960,19 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
                 }
                 done++; bar.progress = done * 100 / total
             }
+
+            // finally rename the folder itself when that option was checked
+            if (folderTarget != null) {
+                status.text = "重命名文件夹 → $folderTarget …"
+                try {
+                    QuarkApi.rename(folder.fid, folderTarget)
+                    success.add("文件夹：${folder.name} → $folderTarget")
+                } catch (e: Exception) {
+                    failed.add(folder.name to (e.message ?: "文件夹重命名失败"))
+                }
+                done++; bar.progress = done * 100 / total
+            }
+
             writeLog(success, failed)
             executing = false
             if (epoch == myEpoch) {
