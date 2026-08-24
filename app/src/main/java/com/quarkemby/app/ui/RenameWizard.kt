@@ -31,7 +31,6 @@ import com.quarkemby.app.data.models.JobLogEntry
 import com.quarkemby.app.util.CrashLog
 import com.quarkemby.app.util.EpisodeParser
 import com.quarkemby.app.util.RenamePlanner
-import com.quarkemby.app.util.ShowNames
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -172,9 +171,8 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
             textSize = 20f; setTypeface(Typeface.DEFAULT, Typeface.BOLD)
             setTextColor(ContextCompat.getColor(context, R.color.ink))
         })
-        val cleanedName = runCatching { ShowNames.clean(folder.name) }.getOrDefault("")
         root.addView(TextView(context).apply {
-            text = cleanedName.ifBlank { folder.name }
+            text = folder.name
             textSize = 13f
             setTextColor(ContextCompat.getColor(context, R.color.muted))
             setPadding(0, 2, 0, 12)
@@ -184,20 +182,12 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
     // ---------- Step 1 ----------
     private fun renderStep1() {
         root.addView(stepHeader("第 1 步 · 剧集名称"))
-        // cleaned name pre-computed defensively: any failure leaves the field
-        // empty rather than leaking the raw folder name (which may contain years).
-        val cleaned = runCatching { ShowNames.clean(folder.name) }.getOrDefault("")
+        // fill the input with the RAW folder name — no cleaning/filtering
         val nameInput = EditText(context).apply {
             hint = "剧集名称"; setSingleLine(true)
-            setText(cleaned)
+            setText(folder.name)
         }
         root.addView(nameInput); root.addView(spacer())
-        root.addView(TextView(context).apply {
-            text = "已自动去除年份等杂项（毛骗(2010) → 毛骗），可手动修改"
-            textSize = 12f
-            setTextColor(ContextCompat.getColor(context, R.color.muted))
-            setPadding(4, 0, 4, 10)
-        })
 
         // TMDB path: season NOT required — season chips come from TMDB in step 2
         root.addView(button("TMDB 搜索（电影 / 剧集）") {
@@ -421,9 +411,8 @@ class RenameWizard(ctx: Context, private val folder: FileItem) : Dialog(ctx) {
             textSize = 20f; setTypeface(Typeface.DEFAULT, Typeface.BOLD)
             setTextColor(ContextCompat.getColor(context, R.color.ink))
         })
-        val cleanedName2 = runCatching { ShowNames.clean(folder.name) }.getOrDefault("")
         page.addView(TextView(context).apply {
-            text = cleanedName2.ifBlank { folder.name }; textSize = 13f
+            text = folder.name; textSize = 13f
             setTextColor(ContextCompat.getColor(context, R.color.muted))
             setPadding(0, Ui.dp(context, 2), 0, Ui.dp(context, 12))
         })
